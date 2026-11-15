@@ -25,6 +25,11 @@ headset and adds RADE V1 to a radio that does not have it.
   - [Enable I2C on the Pi](#enable-i2c-on-the-pi)
   - [What it shows](#what-it-shows)
   - [Refresh rate](#refresh-rate)
+- [Settings menu](#settings-menu)
+  - [Controls](#controls)
+  - [What is in the menu](#what-is-in-the-menu)
+  - [Saving](#saving)
+  - [Volume](#volume)
 - [Logging](#logging)
 - [Project layout](#project-layout)
 - [Where the FreeDV code comes from](#where-the-freedv-code-comes-from)
@@ -41,6 +46,8 @@ headset and adds RADE V1 to a radio that does not have it.
 - Analog mode: a switch bypasses the modem and passes audio straight through.
 - Status on an SSD1306 OLED and on the console: SNR, AF level, sync, mode,
   callsign.
+- A settings menu on the display, operated with a rotary encoder: callsign,
+  audio devices, volume and the other settings, saved back to the config file.
 - One TOML config file. Unknown keys and bad values are reported as errors.
 
 ## How it works
@@ -57,8 +64,8 @@ headset and adds RADE V1 to a radio that does not have it.
 In analog mode the two RADE boxes are bypassed.
 
 Threads at run time: four audio threads (one per stream direction), the
-backend's TX and RX threads, the display thread, and the control thread, which
-polls PTT and the mode switch every 5 ms.
+backend's TX and RX threads, the user interface thread (knob, menu, displays),
+and the control thread, which polls PTT and the mode switch every 5 ms.
 
 ## Hardware
 
@@ -70,6 +77,7 @@ polls PTT and the mode switch every 5 ms.
 | PTT button | Optional. A GPIO line, or the space bar for bench tests. |
 | Mode switch | Optional. A push button or a latching switch on a GPIO line. |
 | Display | Optional. 128x64 SSD1306 OLED on I2C, single or two-colour. |
+| Menu knob | Optional. A rotary encoder with push button on three GPIO lines, or a [Rack UI](https://github.com/Jankyneering/rack-ui) module on the I2C bus. |
 
 ## Build
 
@@ -108,6 +116,7 @@ in that file.
 | `[audio]`, `[audio.radio]`, `[audio.headset]` | Sound devices, sample rates, buffering |
 | `[ptt.input]`, `[ptt.output]` | PTT button, radio keying, TX timing |
 | `[display]` | Console status line, SSD1306 |
+| `[menu]` | The knob that operates the settings menu |
 
 Device names come from `aplay -L` and `arecord -L`. Use the `plughw:` names.
 GPIO chips and lines come from `gpioinfo`.
@@ -303,6 +312,96 @@ At 100 kHz, values below about 100 are not useful, because a full screen
 change already takes that long. The display has its own thread, so a slow
 display does not delay PTT or audio.
 
+## Settings menu
+
+With a knob connected, the display also offers a menu that changes the
+settings in the config file.
+
+![Settings menu screens](docs/menu.png)
+
+### Controls
+
+| Action | Effect |
+|---|---|
+| Press, on the status screen | Opens the menu |
+| Turn | Moves the highlight, or changes the value being edited |
+| Press | Enters a submenu, starts editing, confirms |
+| Long press | Goes back, or cancels the edit |
+
+Every menu also starts with a back entry. The menu closes after `timeout_s`
+without input. PTT keeps working while the menu is open.
+
+The knob is set in `[menu]`:
+
+| `type` | Hardware |
+|---|---|
+| `gpio` | A rotary encoder on three GPIO lines: `line_a`, `line_b`, `line_button`. Contacts to ground, internal pull-ups. |
+| `rackui` | A [Rack UI](https://github.com/Jankyneering/rack-ui) module on the same I2C bus as the display, at address 0x36 |
+| `console` | The keyboard, for bench tests: arrow keys turn, Enter presses, `b` goes back |
+| `none` | No menu |
+
+For a GPIO encoder, wire the common pin to ground and the two phases and the
+switch to three free GPIO lines. If one click of the knob moves two entries or
+needs two clicks, change `steps_per_detent`. If it turns the wrong way, set
+`reverse = true`.
+
+The Rack UI module needs no settings beyond `type = "rackui"`. Its encoder
+count and push count registers are read as they are, without changing the
+module's configuration, so its LED ring keeps following the knob.
+
+Editing text (the callsign): turn to pick a letter, press to move to the next
+position, press on a blank to finish.
+
+### What is in the menu
+
+| Menu | Config section | Settings |
+|---|---|---|
+| Volume | `[audio.radio]`, `[audio.headset]` | Radio in and out, microphone, headphones |
+| Modem | `[modem]` | Callsign, mode, start in analog |
+| Mode switch | `[mode_switch]` | Type, GPIO line, polarity, bias, action, debounce |
+| Audio | `[audio]`, `[audio.radio]`, `[audio.headset]` | Sound device for each of the four directions, sample rates, period, prebuffer |
+| PTT | `[ptt.input]`, `[ptt.output]` | Types, GPIO lines, polarity, bias, debounce, TX delay and tail |
+| Display | `[display]` | Refresh, contrast, rotation, console status line |
+| Controls | `[menu]` | Knob direction, long press time, menu timeout |
+| Log | `[log]` | Level |
+
+The audio device lists show the sound cards present at that moment.
+
+Three settings are not in the menu on purpose: the display type, the display's
+I2C address, and the knob's type and wiring. A wrong value there would switch
+off the menu itself, with no way back except editing the file.
+
+### Saving
+
+Changes are collected and written when you choose "Save & restart". The
+program then restarts itself with the new file. This takes a second or two and
+only happens while receiving.
+
+- Only the changed values are rewritten. Comments, blank lines and the order of
+  the file stay as they are.
+- Before the file is replaced, the new text is checked the same way as at
+  start-up. A combination the program would refuse, such as a GPIO type
+  without a line number, is not saved, and the screen shows the reason.
+- The file is replaced in one step, so a power cut cannot leave half a file.
+- "Discard changes" drops everything that is not saved yet.
+
+The user running the program needs write access to the config file.
+
+### Volume
+
+The volume menu changes the sound cards' mixer levels, the same ones
+`alsamixer` shows. A change acts at once, while you turn the knob. On leaving
+the volume menu the levels are written to the config file as
+`playback_volume` and `capture_volume`, and applied again at every start. No
+restart is needed.
+
+Values are percentages of the control's range, like `amixer set Speaker 80%`.
+
+The program picks one playback and one capture control per card (it prefers
+Master, Speaker, Headphone, PCM, and Mic, Capture). If it picks the wrong one,
+name the right one with `playback_mixer` or `capture_mixer` in the config
+file. `amixer -c <card> scontrols` lists the names.
+
 ## Logging
 
 `log.level` is `debug`, `info`, `warn` or `error`. It applies to this program
@@ -345,11 +444,16 @@ src/
   display/StatusScreen.*     ModemStatus -> Framebuffer, no hardware involved
   display/Ssd1306Display.*   sends the framebuffer to an SSD1306 over I2C
   display/DisplayFactory.cpp config -> display(s)
+  ui/MenuInput.*             knob drivers: GPIO encoder, Rack UI, keyboard
+  ui/Menu.*                  menu engine: navigation, editing, drawing
+  ui/SettingsMenu.*          the settings tree, saving, volume
+  ui/TomlPatcher.*           changes one value in the config file, keeps the rest
+  audio/Mixer.*              sound card volume controls and card list
   util/Log.*                 log levels
 tests/
 ```
 
-Each of `audio`, `ptt` and `display` is an interface plus a factory that picks
+Each of `audio`, `ptt`, `display` and the menu input is an interface plus a factory that picks
 an implementation from the `type` key in the config file. Adding hardware means
 adding one class and one line in the factory:
 
@@ -402,6 +506,7 @@ ctest --test-dir build --output-on-failure
 | `audio_pump` | Capture pacing, playback prebuffer and drain, on null devices |
 | `analog_path` | Pass-through, resampling 48 kHz to 44.1 kHz, overflow, clear |
 | `display` | Status screen layout: level bar, TX band, SNR, callsign, empty row at the colour change |
+| `menu` | Encoder decoding, long press, config file patching, menu navigation and editing, saving, refusing a bad change |
 | `modem_loopback` | Speech in, modem signal out, back into the receiver, sync and callsign decode |
 | `daemon_null_audio` | Whole program on null devices for 3 seconds |
 
@@ -412,12 +517,15 @@ None of the tests need sound cards, GPIO or a display.
 Works on a Pi 4 with two USB sound cards and a two-colour SSD1306: receive,
 transmit, keyboard PTT, status screen.
 
-Not confirmed on hardware yet: GPIO PTT, the GPIO mode switch, PTT out on a
-GPIO line, and CPU load figures.
+Not confirmed on hardware yet: the settings menu with a real knob (GPIO encoder
+or Rack UI), the volume controls and the audio device list on real sound cards,
+GPIO PTT, the GPIO mode switch, PTT out on a GPIO line, and CPU load figures.
+The menu logic, the file writing and the screens are covered by tests.
 
 Next:
 
-1. GPIO PTT and mode switch.
-2. Measure CPU load in RX and TX on the Pi.
-3. PTT out through hamlib or rigctld.
-4. RADE V2, once the upstream backend supports it.
+1. Try the settings menu with a knob on the Pi.
+2. GPIO PTT and mode switch.
+3. Measure CPU load in RX and TX on the Pi.
+4. PTT out through hamlib or rigctld.
+5. RADE V2, once the upstream backend supports it.

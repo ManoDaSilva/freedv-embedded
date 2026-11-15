@@ -4,17 +4,21 @@
 #include <string>
 #include <vector>
 
+#include "display/Framebuffer.h"
 #include "modem/ModemStatus.h"
 
 namespace fdve {
 
-// A display gets a status snapshot at a fixed interval, from its own thread.
-// A slow driver (I2C OLED) can simply block in update().
+// A display is fed from the user interface thread. A slow driver (I2C OLED)
+// can simply block in its calls.
 class IDisplay
 {
 public:
     virtual ~IDisplay() = default;
+    // Text displays use the status.
     virtual void update(const ModemStatus& status) = 0;
+    // Graphical displays show the frame: the status screen or the menu.
+    virtual void show(const Framebuffer&) {}
 };
 
 struct DisplayConfig

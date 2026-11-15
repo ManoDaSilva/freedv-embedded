@@ -36,6 +36,12 @@ bool parseLogLevel(const char* name, LogLevel& out)
     return false;
 }
 
+const char* level_name(LogLevel level)
+{
+    const char* const names[] = {"debug", "info", "warn", "error"};
+    return names[static_cast<int>(level)];
+}
+
 void logMessage(LogLevel level, const char* format, ...)
 {
     if (static_cast<int>(level) < g_level.load()) return;

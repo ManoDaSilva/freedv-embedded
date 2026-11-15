@@ -9,7 +9,6 @@
 #include <cstring>
 #include <stdexcept>
 
-#include "display/StatusScreen.h"
 #include "util/Log.h"
 
 namespace fdve {
@@ -82,16 +81,15 @@ void Ssd1306Display::sendPage(int page, const uint8_t* data)
         throw std::runtime_error("ssd1306: I2C write failed: " + std::string(std::strerror(errno)));
 }
 
-void Ssd1306Display::update(const ModemStatus& status)
+void Ssd1306Display::show(const Framebuffer& frame)
 {
-    renderStatusScreen(status, fb_);
     try
     {
         // Only send the pages that changed. A full frame takes about 100 ms
         // on a 100 kHz bus; most updates touch one or two pages.
         for (int page = 0; page < Framebuffer::Pages; page++)
         {
-            const uint8_t* now = fb_.page(page);
+            const uint8_t* now = frame.page(page);
             uint8_t* last = sent_.data() + page * Framebuffer::Width;
             if (!firstFrame_ && std::memcmp(now, last, Framebuffer::Width) == 0) continue;
             sendPage(page, now);

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <atomic>
+#include <string>
 
 #include "app/Config.h"
 
@@ -18,7 +19,10 @@ namespace fdve {
 // radio while transmitting, radio audio goes straight to the headset while
 // receiving. PTT handling is the same. The mode only changes while receiving.
 //
-// Returns 0 when "stop" was set, 1 when an audio device failed.
-int runController(const Config& config, const std::atomic<bool>& stop);
+// A settings menu on the display can change the config file. Saving there ends
+// the run with Restart, and the caller starts over with the new file.
+enum class RunResult { Stopped, Failed, Restart };
+
+RunResult runController(const Config& config, const std::string& configPath, const std::atomic<bool>& stop);
 
 } // namespace fdve

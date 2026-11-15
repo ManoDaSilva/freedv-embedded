@@ -16,6 +16,13 @@ add_executable(DisplayTest DisplayTest.cpp)
 target_link_libraries(DisplayTest PRIVATE fdve_display)
 add_test(NAME display COMMAND DisplayTest)
 
+add_executable(MenuTest MenuTest.cpp)
+target_link_libraries(MenuTest PRIVATE fdve_ui)
+target_compile_definitions(MenuTest PRIVATE
+    EXAMPLE_CONFIG="${CMAKE_SOURCE_DIR}/config/freedv-embedded.example.toml"
+    TEST_TMP_DIR="${CMAKE_CURRENT_BINARY_DIR}")
+add_test(NAME menu COMMAND MenuTest)
+
 # Transmits through the real modem, feeds the result back into the receiver
 # and checks that it syncs and decodes the callsign. No sound hardware needed.
 add_executable(ModemLoopbackTest ModemLoopbackTest.cpp)

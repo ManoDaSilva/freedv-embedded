@@ -39,6 +39,14 @@ capture_device = "plughw:CARD=Device,DEV=0"
 playback_device = "plughw:CARD=Device,DEV=0"
 sample_rate = 48000
 
+# Optional, for both sound cards: mixer levels in percent, applied at
+# start-up. The volume menu writes these. Without them the levels are left as
+# they are (as set with alsamixer).
+# playback_volume = 80
+# capture_volume = 50
+# playback_mixer = "Speaker"   # control names as shown by alsamixer;
+# capture_mixer = "Mic"        # leave out to let the program pick one
+
 # The sound card wired to the headphones and microphone.
 [audio.headset]
 type = "alsa"
@@ -76,3 +84,28 @@ refresh_ms = 250
 # i2c_address = 0x3C
 # rotate = false       # true turns the picture 180 degrees
 # contrast = 207       # 0 to 255
+
+# Settings menu on the display, operated with a rotary encoder and its push
+# button. Press to open the menu, turn to move, press to select, long press
+# to go back.
+[menu]
+type = "none"          # "none", "gpio", "rackui" or "console"
+
+# "gpio": an encoder wired to three GPIO lines, contacts to ground.
+# chip = "/dev/gpiochip0"
+# line_a = 5
+# line_b = 6
+# line_button = 13
+# active_low = true
+# bias = "pull-up"
+# steps_per_detent = 4   # 4 for most encoders; 2 or 1 if one click moves too far
+
+# "rackui": a Rack UI module on the same I2C bus as the display.
+# i2c_device = "/dev/i2c-1"
+# i2c_address = 0x36
+
+# "console": arrow keys turn, Enter presses, "b" goes back. For bench tests.
+
+# reverse = false        # swap the turning direction
+# long_press_ms = 600
+# timeout_s = 30         # leave the menu after this long without input

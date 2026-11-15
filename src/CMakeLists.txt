@@ -1,5 +1,5 @@
 # Each directory is one static library with one job. The dependency direction is
-#   app -> config, modem, audio, ptt, display
+#   app -> ui -> config, audio, ptt, display   and   app -> modem
 # and only "modem" knows about the FreeDV backend.
 
 # --- log: level-filtered messages, used by everything --------------------------
@@ -18,6 +18,7 @@ add_library(fdve_audio STATIC
     audio/AnalogPath.cpp
     audio/AudioFactory.cpp
     audio/AudioPump.cpp
+    audio/Mixer.cpp
     audio/NullStream.cpp)
 target_include_directories(fdve_audio PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(fdve_audio PUBLIC fdve_log PRIVATE samplerate)
@@ -44,6 +45,15 @@ add_library(fdve_display STATIC
 target_include_directories(fdve_display PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(fdve_display PUBLIC fdve_log)
 
+# --- ui: knob input, menu engine, settings menu, config file writer ----------------
+add_library(fdve_ui STATIC
+    ui/Menu.cpp
+    ui/MenuInput.cpp
+    ui/SettingsMenu.cpp
+    ui/TomlPatcher.cpp)
+target_include_directories(fdve_ui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(fdve_ui PUBLIC fdve_config fdve_display fdve_audio fdve_ptt fdve_log)
+
 # --- config: the TOML file -> Config struct -----------------------------------
 add_library(fdve_config STATIC app/Config.cpp)
 target_include_directories(fdve_config PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
@@ -51,7 +61,7 @@ target_link_libraries(fdve_config PUBLIC fdve_log PRIVATE tomlplusplus::tomlplus
 
 # --- app: PTT state machine, wiring ---------------------------------------------
 add_library(fdve_app STATIC app/Controller.cpp)
-target_link_libraries(fdve_app PUBLIC fdve_config fdve_modem fdve_audio fdve_ptt fdve_display)
+target_link_libraries(fdve_app PUBLIC fdve_config fdve_modem fdve_audio fdve_ptt fdve_display fdve_ui)
 
 add_executable(freedv-embedded main.cpp)
 target_link_libraries(freedv-embedded PRIVATE fdve_app Threads::Threads)

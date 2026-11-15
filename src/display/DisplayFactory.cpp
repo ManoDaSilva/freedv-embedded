@@ -17,6 +17,10 @@ public:
     {
         for (auto& display : displays_) display->update(status);
     }
+    void show(const Framebuffer& frame) override
+    {
+        for (auto& display : displays_) display->show(frame);
+    }
 
 private:
     std::vector<std::unique_ptr<IDisplay>> displays_;

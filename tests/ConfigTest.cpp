@@ -97,6 +97,30 @@ int main()
     CHECK(rejects(q("[display]\ntype = [\"console\", 3]\n").c_str(), "only strings"));
     CHECK(rejects(q("[display]\ni2c_address = 0x80\n").c_str(), "between"));
 
+    // Menu input and stored volumes.
+    CHECK(example.menu.type == "none" && example.menu.i2cAddress == 0x36 && example.menu.timeoutS == 30);
+    CHECK(example.radio.playbackVolume == -1 && example.headset.captureVolume == -1);
+    auto m = fdve::parseConfig(q(R"(
+        [audio.headset]
+        playback_volume = 70
+        capture_mixer = "Mic"
+        [menu]
+        type = "gpio"
+        line_a = 5
+        line_b = 6
+        line_button = 13
+        steps_per_detent = 2
+        reverse = true
+    )"));
+    CHECK(m.headset.playbackVolume == 70 && m.headset.captureMixer == "Mic");
+    CHECK(m.menu.type == "gpio" && m.menu.lineA == 5 && m.menu.lineB == 6 && m.menu.lineButton == 13);
+    CHECK(m.menu.stepsPerDetent == 2 && m.menu.reverse && m.menu.activeLow);
+    CHECK(fdve::parseConfig(q("[menu]\ntype = \"rackui\"\n")).menu.type == "rackui");
+    CHECK(rejects(q("[menu]\ntype = \"gpio\"\nline_a = 5\n").c_str(), "are required"));
+    CHECK(rejects(q("[menu]\ntype = \"knob\"\n").c_str(), "menu.type"));
+    CHECK(rejects(q("[menu]\nsteps_per_detent = 3\n").c_str(), "1, 2 or 4"));
+    CHECK(rejects(q("[audio.radio]\nplayback_volume = 120\n").c_str(), "between"));
+
     // Mistakes are errors, not silent defaults.
     CHECK(rejects("[modem]\nmod = \"RADEV1\"\n", "unknown key 'modem.mod'"));
     CHECK(rejects("[modme]\n", "unknown section 'modme'"));

@@ -6,7 +6,9 @@
 
 #include "audio/AnalogPath.h"
 #include "audio/AudioPump.h"
+#include "display/StatusScreen.h"
 #include "modem/Modem.h"
+#include "ui/SettingsMenu.h"
 #include "util/Log.h"
 
 namespace fdve {
@@ -26,15 +28,24 @@ AudioStreamConfig streamConfig(const SoundCardConfig& card, const std::string& d
     return c;
 }
 
-// Runs the displays on their own thread, so a slow display (an OLED on I2C
-// takes tens of milliseconds per frame) never delays PTT handling.
-class DisplayThread
+// The user interface thread: reads the knob, runs the settings menu and feeds
+// the displays. It is separate from the control loop so that a slow display
+// (an OLED on I2C takes tens of milliseconds per frame) or a busy I2C bus
+// never delays PTT handling.
+class UiThread
 {
 public:
-    DisplayThread(std::unique_ptr<IDisplay> display, int refreshMs)
-        : display_(std::move(display)), refreshMs_(refreshMs), thread_(&DisplayThread::run, this) {}
+    UiThread(const Config& config, const std::string& configPath)
+        : display_(createDisplay(config.display)),
+          input_(createMenuInput(config.menu)),
+          settings_(config, configPath),
+          refreshMs_(config.display.refreshMs),
+          timeoutS_(config.menu.timeoutS),
+          thread_(&UiThread::run, this)
+    {
+    }
 
-    ~DisplayThread()
+    ~UiThread()
     {
         running_.store(false);
         thread_.join();
@@ -46,25 +57,69 @@ public:
         status_ = status;
     }
 
+    bool restartRequested() const { return settings_.restartRequested(); }
+
 private:
     void run()
     {
+        settings_.applyStoredVolumes();
+        Menu& menu = settings_.menu();
+        Framebuffer frame;
+        auto nextRefresh = Clock::now();
+        auto lastInput = Clock::now();
+
         while (running_.load())
         {
-            ModemStatus snapshot;
+            const auto now = Clock::now();
+            const MenuEvents events = input_->poll();
+            bool redraw = false;
+
+            if (menu.active())
             {
-                std::lock_guard<std::mutex> lock(mutex_);
-                snapshot = status_;
+                if (events.any())
+                {
+                    redraw = menu.handle(events);
+                    lastInput = now;
+                }
+                else if (now - lastInput > std::chrono::seconds(timeoutS_))
+                {
+                    menu.close(); // unsaved changes stay pending
+                    redraw = true;
+                }
             }
-            display_->update(snapshot);
-            // Sleep in short steps so shutdown stays quick.
-            for (int waited = 0; waited < refreshMs_ && running_.load(); waited += 10)
-                std::this_thread::sleep_for(milliseconds(10));
+            else if (events.clicks > 0)
+            {
+                menu.open(); // a press on the status screen opens the menu
+                lastInput = now;
+                redraw = true;
+            }
+
+            const bool tick = now >= nextRefresh;
+            if (tick || redraw)
+            {
+                ModemStatus snapshot;
+                {
+                    std::lock_guard<std::mutex> lock(mutex_);
+                    snapshot = status_;
+                }
+                if (tick)
+                {
+                    nextRefresh = now + milliseconds(refreshMs_);
+                    display_->update(snapshot);
+                }
+                if (menu.active()) menu.render(frame);
+                else renderStatusScreen(snapshot, frame);
+                display_->show(frame);
+            }
+            std::this_thread::sleep_for(milliseconds(10));
         }
     }
 
     std::unique_ptr<IDisplay> display_;
+    std::unique_ptr<IMenuInput> input_;
+    SettingsMenu settings_;
     int refreshMs_;
+    int timeoutS_;
     std::mutex mutex_;
     ModemStatus status_;
     std::atomic<bool> running_{true};
@@ -73,13 +128,13 @@ private:
 
 } // namespace
 
-int runController(const Config& config, const std::atomic<bool>& stop)
+RunResult runController(const Config& config, const std::string& configPath, const std::atomic<bool>& stop)
 {
     // Open the hardware first: these fail fast with a clear message.
     auto pttIn = createPttInput(config.pttInput);
     auto pttOut = createPttOutput(config.pttOutput);
     auto modeSwitch = createModeSwitch(config.modeSwitch, config.startAnalog);
-    auto display = createDisplay(config.display);
+    UiThread ui(config, configPath);
 
     auto radioIn = createAudioStream(streamConfig(config.radio, config.radio.captureDevice, config.periodMs), StreamDirection::Capture);
     auto radioOut = createAudioStream(streamConfig(config.radio, config.radio.playbackDevice, config.periodMs), StreamDirection::Playback);
@@ -135,11 +190,9 @@ int runController(const Config& config, const std::atomic<bool>& stop)
              return modem.readSpeaker(s, n);
          }});
 
-    DisplayThread displayThread(std::move(display), config.display.refreshMs);
-
     ModemState state = ModemState::Receive;
     Clock::time_point endingDeadline;
-    int exitCode = 0;
+    RunResult result = RunResult::Stopped;
 
     FDVE_INFO("freedv-embedded running, mode %s", analog.load() ? "analog" : config.mode.c_str());
 
@@ -209,12 +262,20 @@ int runController(const Config& config, const std::atomic<bool>& stop)
         status.micDbfs = micCapture.peakDbfs();
         status.rxCallsign = modem.lastRxCallsign();
         status.ownCallsign = config.callsign;
-        displayThread.publish(status);
+        ui.publish(status);
 
         if (radioCapture.failed() || micCapture.failed() || radioPlayback.failed() || speakerPlayback.failed())
         {
             FDVE_ERROR("an audio device failed, exiting");
-            exitCode = 1;
+            result = RunResult::Failed;
+            break;
+        }
+
+        // Settings were saved from the menu. Restart between overs only.
+        if (ui.restartRequested() && state == ModemState::Receive)
+        {
+            std::this_thread::sleep_for(milliseconds(700)); // let the "Saved" message be read
+            result = RunResult::Restart;
             break;
         }
 
@@ -224,10 +285,10 @@ int runController(const Config& config, const std::atomic<bool>& stop)
     // Never leave the radio keyed.
     modem.finishTx();
     pttOut->set(false);
-    return exitCode;
-    // Destruction runs in reverse declaration order: display thread, then the
-    // pumps, then the analog paths and the modem. No audio thread touches the
-    // modem after it stops.
+    return result;
+    // Destruction runs in reverse declaration order: the pumps, then the
+    // analog paths and the modem, then the user interface thread. No audio
+    // thread touches the modem after it stops.
 }
 
 } // namespace fdve

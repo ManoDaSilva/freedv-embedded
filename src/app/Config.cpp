@@ -60,7 +60,13 @@ void readInt(const toml::table& table, const std::string& path, const char* key,
 void readSoundCard(const toml::table& audio, const char* name, SoundCardConfig& out)
 {
     const std::string path = std::string("audio.") + name;
-    auto t = section(audio, "audio", name, {"type", "capture_device", "playback_device", "sample_rate"});
+    auto t = section(audio, "audio", name,
+                     {"type", "capture_device", "playback_device", "sample_rate", "playback_volume",
+                      "capture_volume", "playback_mixer", "capture_mixer"});
+    readInt(t, path, "playback_volume", out.playbackVolume, -1, 100);
+    readInt(t, path, "capture_volume", out.captureVolume, -1, 100);
+    read(t, path, "playback_mixer", out.playbackMixer);
+    read(t, path, "capture_mixer", out.captureMixer);
     read(t, path, "type", out.type);
     read(t, path, "capture_device", out.captureDevice);
     read(t, path, "playback_device", out.playbackDevice);
@@ -130,7 +136,7 @@ Config parseConfig(std::string_view text)
     for (auto&& [key, value] : root)
     {
         auto k = key.str();
-        if (k != "log" && k != "modem" && k != "mode_switch" && k != "audio" && k != "ptt" && k != "display")
+        if (k != "log" && k != "modem" && k != "mode_switch" && k != "audio" && k != "ptt" && k != "display" && k != "menu")
             fail("unknown section '" + std::string(k) + "'");
     }
 
@@ -197,6 +203,31 @@ Config parseConfig(std::string_view text)
     readInt(display, "display", "i2c_address", config.display.i2cAddress, 0x03, 0x77);
     read(display, "display", "rotate", config.display.rotate);
     readInt(display, "display", "contrast", config.display.contrast, 0, 255);
+
+    auto menu = section(root, "", "menu",
+                        {"type", "chip", "line_a", "line_b", "line_button", "active_low", "bias", "steps_per_detent",
+                         "i2c_device", "i2c_address", "reverse", "long_press_ms", "timeout_s"});
+    read(menu, "menu", "type", config.menu.type);
+    if (config.menu.type != "none" && config.menu.type != "gpio" && config.menu.type != "rackui" &&
+        config.menu.type != "console")
+        fail("'menu.type' must be \"none\", \"gpio\", \"rackui\" or \"console\"");
+    read(menu, "menu", "chip", config.menu.chip);
+    readInt(menu, "menu", "line_a", config.menu.lineA, -1, 1023);
+    readInt(menu, "menu", "line_b", config.menu.lineB, -1, 1023);
+    readInt(menu, "menu", "line_button", config.menu.lineButton, -1, 1023);
+    if (config.menu.type == "gpio" && (config.menu.lineA < 0 || config.menu.lineB < 0 || config.menu.lineButton < 0))
+        fail("'menu.line_a', 'menu.line_b' and 'menu.line_button' are required");
+    read(menu, "menu", "active_low", config.menu.activeLow);
+    read(menu, "menu", "bias", config.menu.bias);
+    if (config.menu.bias != "none" && config.menu.bias != "pull-up" && config.menu.bias != "pull-down")
+        fail("'menu.bias' must be \"none\", \"pull-up\" or \"pull-down\"");
+    readInt(menu, "menu", "steps_per_detent", config.menu.stepsPerDetent, 1, 4);
+    if (config.menu.stepsPerDetent == 3) fail("'menu.steps_per_detent' must be 1, 2 or 4");
+    read(menu, "menu", "i2c_device", config.menu.i2cDevice);
+    readInt(menu, "menu", "i2c_address", config.menu.i2cAddress, 0x03, 0x77);
+    read(menu, "menu", "reverse", config.menu.reverse);
+    readInt(menu, "menu", "long_press_ms", config.menu.longPressMs, 200, 5000);
+    readInt(menu, "menu", "timeout_s", config.menu.timeoutS, 5, 3600);
 
     return config;
 }

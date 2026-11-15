@@ -11,6 +11,7 @@ LogLevel logLevel();
 
 // Returns false when the name is not one of "debug", "info", "warn", "error".
 bool parseLogLevel(const char* name, LogLevel& out);
+const char* level_name(LogLevel level); // "debug", "info", "warn" or "error"
 
 void logMessage(LogLevel level, const char* format, ...) __attribute__((format(printf, 2, 3)));
 

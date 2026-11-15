@@ -1,4 +1,7 @@
+#include <unistd.h>
+
 #include <atomic>
+#include <cerrno>
 #include <csignal>
 #include <cstdio>
 #include <cstring>
@@ -7,6 +10,7 @@
 
 #include "app/Config.h"
 #include "app/Controller.h"
+#include "util/Log.h"
 
 namespace {
 
@@ -55,7 +59,18 @@ int main(int argc, char** argv)
 
         std::signal(SIGINT, onSignal);
         std::signal(SIGTERM, onSignal);
-        return fdve::runController(config, g_stop);
+        switch (fdve::runController(config, configPath, g_stop))
+        {
+            case fdve::RunResult::Stopped: return 0;
+            case fdve::RunResult::Failed: return 1;
+            case fdve::RunResult::Restart: break;
+        }
+        // Settings were changed from the menu. Start again from scratch as a
+        // fresh process image, so every device is reopened with the new file.
+        FDVE_INFO("restarting with the new settings");
+        execv("/proc/self/exe", argv);
+        std::fprintf(stderr, "freedv-embedded: restart failed: %s\n", std::strerror(errno));
+        return 1;
     }
     catch (const std::exception& e)
     {
