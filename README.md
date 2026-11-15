@@ -12,7 +12,7 @@ headset and adds RADE V1 to a radio that does not have it.
                                   └──> display (SNR, AF level, modem state)
 ```
 
-Status: skeleton. See "What is tested" below.
+Status: builds and passes its tests on a Raspberry Pi, not yet tried with real audio hardware. See "What is tested" below.
 
 ## Where the FreeDV code comes from
 
@@ -156,21 +156,16 @@ ctest --test-dir build --output-on-failure
 |---|---|---|
 | `config` | Example file parses, defaults, typos and bad values are rejected | passes |
 | `audio_pump` | Capture pacing, playback prebuffer and drain, on null devices | passes |
-| `modem_loopback` | Speech in, modem signal out, back into the receiver, sync and callsign decode | written, not run yet |
-| `daemon_null_audio` | Whole program on null devices for 3 seconds | written, not run yet |
+| `modem_loopback` | Speech in, modem signal out, back into the receiver, sync and callsign decode | passes on a Pi |
+| `daemon_null_audio` | Whole program on null devices for 3 seconds | passes on a Pi |
 
-The last two need the upstream build (Opus and RADE). The environment this
-skeleton was written in could not download Opus, so `src/modem/Modem.cpp` has
-not been compiled yet. The first build on a Pi or a PC is the next step, and
-`modem_loopback` is the test that tells whether the wrapper is right.
-
-Not tested at all, because it needs hardware: ALSA devices, GPIO lines, and
-CPU load on a Pi.
+Not tested yet, because it needs hardware: ALSA devices, GPIO lines, and CPU
+load on a Pi with real audio.
 
 ## Next steps
 
-1. Build on a PC, fix what `modem_loopback` finds.
-2. Build on the Pi, measure CPU load in RX and TX.
-3. Real sound cards: levels, latency, `prebuffer_ms`.
+1. Real sound cards: levels, latency, `prebuffer_ms`.
+2. GPIO PTT.
+3. Measure CPU load in RX and TX on the Pi.
 4. OLED driver.
 5. PTT out through hamlib or rigctld.

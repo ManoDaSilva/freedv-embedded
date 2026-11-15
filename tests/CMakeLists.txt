@@ -18,4 +18,4 @@ set_tests_properties(modem_loopback PROPERTIES TIMEOUT 120)
 
 # Runs the whole daemon on null audio devices for a few seconds.
 add_test(NAME daemon_null_audio
-    COMMAND sh -c "timeout -s INT 3 $<TARGET_FILE:freedv-embedded> -c ${CMAKE_CURRENT_SOURCE_DIR}/null-audio.toml; test $? -eq 0")
+    COMMAND sh -c "timeout --preserve-status -s INT 3 $<TARGET_FILE:freedv-embedded> -c ${CMAKE_CURRENT_SOURCE_DIR}/null-audio.toml; test $? -eq 0")
