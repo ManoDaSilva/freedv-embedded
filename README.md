@@ -178,14 +178,88 @@ with `alsamixer`.
 `type = ["ssd1306", "console"]`.
 
 `ssd1306` drives a 128x64 SSD1306 OLED on I2C (the common 0.96 inch modules).
-Wiring on a Pi: VCC to 3.3 V (pin 1), GND to pin 6, SDA to GPIO 2 (pin 3), SCL
-to GPIO 3 (pin 5). Enable I2C with `raspi-config`, then check the address:
+
+### Wiring
+
+| Display pin | Pi header pin |
+|---|---|
+| VCC | pin 1 (3.3 V) |
+| GND | pin 6 |
+| SDA | pin 3 (GPIO 2) |
+| SCL | pin 5 (GPIO 3) |
+
+### Enable I2C on the Pi
+
+I2C is off by default on Raspberry Pi OS. Enable it once:
+
+```bash
+sudo raspi-config nonint do_i2c 0
+```
+
+The same setting is in the menu of `sudo raspi-config` under "Interface
+Options", "I2C". It adds `dtparam=i2c_arm=on` to `/boot/firmware/config.txt`
+and makes `/dev/i2c-1` appear. No reboot is needed for this step.
+
+Install the I2C tools and let your user access the bus:
+
+```bash
+sudo apt install i2c-tools
+```
+
+```bash
+sudo usermod -aG i2c $USER
+```
+
+Log out and in again for the group change to apply. Then look for the display:
 
 ```bash
 i2cdetect -y 1
 ```
 
-The user running the program must be in the `i2c` group.
+The table should show `3c` (some modules use `3d`). If the table is empty,
+check the wiring. Put the address in the config file:
+
+```toml
+[display]
+type = ["ssd1306", "console"]
+i2c_device = "/dev/i2c-1"
+i2c_address = 0x3C
+```
+
+If the program stops at start-up with "ssd1306: cannot open /dev/i2c-1", I2C
+is not enabled or the user is not in the `i2c` group. If it reports "I2C write
+failed", the address or the wiring is wrong.
+
+### Refresh rate
+
+`display.refresh_ms` sets how often the screen is redrawn. The default is 250,
+which is four times per second. The allowed range is 50 to 10000.
+
+The I2C bus is the practical limit. Only the parts of the screen that changed
+are sent, in strips of 8 pixel rows. Calculated transfer times, not measured:
+
+| | 100 kHz bus (Pi default) | 400 kHz bus |
+|---|---|---|
+| One strip | about 13 ms | about 3 ms |
+| AF bar changed (2 strips) | about 25 ms | about 6 ms |
+| Whole screen changed (8 strips) | about 100 ms | about 25 ms |
+
+The display thread draws and then sleeps `refresh_ms`, so the real period is
+`refresh_ms` plus the transfer time. The level meter is a peak meter that falls
+25 dB per second, so short peaks stay visible between updates.
+
+For a livelier bar, raise the bus speed and lower `refresh_ms` to about 100.
+Add this line to `/boot/firmware/config.txt` and reboot:
+
+```
+dtparam=i2c_arm_baudrate=400000
+```
+
+At 100 kHz, values below about 100 are not useful, because a full screen
+change already takes that long. The display has its own thread, so a slow
+display does not delay PTT or audio.
+
+### What it shows
 
 The SNR is the largest element, with the AF level bar from the radio below it
 (-60 to 0 dBFS, with a mark at -10). The top line shows the mode and sync, the
