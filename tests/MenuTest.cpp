@@ -95,6 +95,64 @@ static void testKnob()
     CHECK(e.clicks == 2);
 }
 
+static void testRackUiDecoder()
+{
+    using Reading = RackUiDecoder::Reading;
+    using namespace std::chrono;
+    const auto t0 = steady_clock::now();
+    auto ms = [&](int n) { return t0 + milliseconds(n); };
+    auto same = [](Reading value) { return [value](Reading& out) { out = value; return true; }; };
+
+    RackUiDecoder decoder(600);
+    decoder.reset(Reading{100, 7, false});
+
+    // Nothing changed: no events, and no second read is made.
+    bool reread = false;
+    auto noReread = [&](Reading&) { reread = true; return true; };
+    CHECK(!decoder.update(Reading{100, 7, false}, noReread, ms(0)).any() && !reread);
+
+    // A turn of three, confirmed by the second read.
+    MenuEvents e = decoder.update(Reading{103, 7, false}, same(Reading{103, 7, false}), ms(10));
+    CHECK(e.steps == 3 && e.clicks == 0);
+
+    // A corrupted read: the second read shows the real, unchanged values.
+    // Nothing is reported, now or on the following clean polls.
+    e = decoder.update(Reading{-7937, 255, true}, same(Reading{103, 7, false}), ms(20));
+    CHECK(!e.any() && decoder.rejected() == 1);
+    e = decoder.update(Reading{103, 7, false}, noReread, ms(30));
+    CHECK(!e.any());
+    // Two different wrong reads in a row are not a confirmation either.
+    e = decoder.update(Reading{104, 9, false}, same(Reading{98, 7, false}), ms(40));
+    CHECK(!e.any() && decoder.rejected() == 2);
+    // A corrupted button state alone must not start a press.
+    e = decoder.update(Reading{103, 7, true}, noReread, ms(50));
+    e = decoder.update(Reading{103, 7, true}, noReread, ms(900));
+    CHECK(!e.any());
+
+    // A real press: counted when confirmed, reported as a click on release.
+    e = decoder.update(Reading{103, 8, true}, same(Reading{103, 8, true}), ms(1000));
+    CHECK(!e.any());
+    e = decoder.update(Reading{103, 8, false}, noReread, ms(1100));
+    CHECK(e.clicks == 1 && e.backs == 0);
+    // Held: a long press, and no click when it is released.
+    e = decoder.update(Reading{103, 9, true}, same(Reading{103, 9, true}), ms(2000));
+    e = decoder.update(Reading{103, 9, true}, noReread, ms(2700));
+    CHECK(e.backs == 1 && e.clicks == 0);
+    CHECK(!decoder.update(Reading{103, 9, false}, noReread, ms(2800)).any());
+
+    // The 16 bit counter wraps: still a turn of two.
+    decoder.reset(Reading{32767, 9, false});
+    e = decoder.update(Reading{-32767, 9, false}, same(Reading{-32767, 9, false}), ms(3000));
+    CHECK(e.steps == 2);
+
+    // The module restarted and its counters went back to zero: adopted, no events.
+    e = decoder.update(Reading{0, 0, false}, same(Reading{0, 0, false}), ms(3100));
+    CHECK(!e.any());
+    e = decoder.update(Reading{-1, 0, false}, same(Reading{-1, 0, false}), ms(3200));
+    CHECK(e.steps == -1);
+    CHECK(!reread);
+}
+
 static void testPatcher()
 {
     const std::string text =
@@ -370,6 +428,7 @@ int main(int argc, char** argv)
 {
     if (argc > 1) outDir = argv[1];
     testKnob();
+    testRackUiDecoder();
     testPatcher();
     testEngine();
     testSettings();

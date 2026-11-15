@@ -1,6 +1,8 @@
 #pragma once
 
 #include <chrono>
+#include <cstdint>
+#include <functional>
 #include <memory>
 #include <string>
 
@@ -63,6 +65,44 @@ private:
     int longPressMs_;
     bool pending_ = false; // a press that is neither a click nor a long press yet
     std::chrono::steady_clock::time_point since_;
+};
+
+// Turns the Rack UI module's free-running counters into events, and rejects
+// readings that cannot be trusted.
+//
+// The module is a microcontroller that stretches the I2C clock while it
+// prepares each byte. The Raspberry Pi's I2C controller does not handle clock
+// stretching reliably, so a read now and then returns wrong bytes without any
+// error. Taken at face value, such a read looks like the knob was turned or
+// pressed. Two rules keep those out:
+//   - a changed reading only counts once a second read returns the same values
+//   - a confirmed change larger than a hand can produce is taken as a module
+//     reset: the counters are adopted, no events are reported
+class RackUiDecoder
+{
+public:
+    struct Reading
+    {
+        int16_t count = 0;  // registers 0x04-0x05
+        uint8_t pushes = 0; // register 0x06
+        bool down = false;  // register 0x07
+        bool sameCounters(const Reading& other) const { return count == other.count && pushes == other.pushes; }
+    };
+
+    explicit RackUiDecoder(int longPressMs) : press_(longPressMs) {}
+
+    void reset(const Reading& reading) { last_ = reading; }
+
+    // first: this poll's reading. reread: reads the module again, false on a bus error.
+    MenuEvents update(const Reading& first, const std::function<bool(Reading&)>& reread,
+                      std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now());
+
+    unsigned rejected() const { return rejected_; } // readings discarded so far
+
+private:
+    PressTracker press_;
+    Reading last_;
+    unsigned rejected_ = 0;
 };
 
 // Quadrature decoding, shared by encoder drivers and testable on its own.

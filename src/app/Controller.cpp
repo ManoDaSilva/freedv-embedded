@@ -73,6 +73,9 @@ private:
             const auto now = Clock::now();
             const MenuEvents events = input_->poll();
             bool redraw = false;
+            if (events.any())
+                FDVE_DEBUG("menu input: steps=%d clicks=%d backs=%d (menu %s, on \"%s\")", events.steps, events.clicks,
+                           events.backs, menu.active() ? "open" : "closed", menu.selectedLabel().c_str());
 
             if (menu.active())
             {

@@ -3,6 +3,7 @@
 #include <fcntl.h>
 #include <linux/gpio.h>
 #include <linux/i2c-dev.h>
+#include <linux/i2c.h>
 #include <sys/ioctl.h>
 #include <unistd.h>
 
@@ -39,6 +40,37 @@ void PressTracker::update(int pressesSeen, bool down, MenuEvents& events,
         events.backs++;
         pending_ = false;
     }
+}
+
+// ---- RackUiDecoder ----------------------------------------------------------
+
+MenuEvents RackUiDecoder::update(const Reading& first, const std::function<bool(Reading&)>& reread,
+                                 std::chrono::steady_clock::time_point now)
+{
+    MenuEvents events;
+    Reading reading = first;
+    int presses = 0;
+
+    if (!reading.sameCounters(last_))
+    {
+        Reading second;
+        if (!reread(second) || !second.sameCounters(reading))
+        {
+            // Not confirmed: a corrupted read, or the knob moved between the
+            // two reads. Either way, decide on the next poll.
+            rejected_++;
+            return events;
+        }
+        const int turned = static_cast<int16_t>(reading.count - last_.count); // wraps correctly
+        const int pressed = static_cast<uint8_t>(reading.pushes - last_.pushes);
+        last_ = reading;
+        // More than a hand can do between two polls: the module restarted.
+        if (turned > 40 || turned < -40 || pressed > 3) return events;
+        events.steps = turned;
+        presses = pressed;
+    }
+    press_.update(presses, reading.down, events, now);
+    return events;
 }
 
 // ---- QuadratureDecoder -------------------------------------------------------
@@ -198,7 +230,7 @@ private:
 class RackUiInput : public IMenuInput
 {
 public:
-    explicit RackUiInput(const MenuInputConfig& config) : config_(config), press_(config.longPressMs)
+    explicit RackUiInput(const MenuInputConfig& config) : config_(config), decoder_(config.longPressMs)
     {
         fd_ = open(config.i2cDevice.c_str(), O_RDWR | O_CLOEXEC);
         if (fd_ < 0)
@@ -210,11 +242,20 @@ public:
             throw std::runtime_error("rackui: cannot select I2C address: " + std::string(std::strerror(err)));
         }
         uint8_t version[2];
-        if (!readRegisters(0x00, version, 2) || !readState(count_, pushes_, down_))
+        RackUiDecoder::Reading a, b;
+        bool ok = readRegisters(0x00, version, 2);
+        // Start from a reading that was seen twice.
+        for (int attempt = 0; ok && attempt < 5; attempt++)
+        {
+            ok = readState(a) && readState(b);
+            if (ok && a.sameCounters(b)) break;
+        }
+        if (!ok)
         {
             close(fd_);
             throw std::runtime_error("rackui: no answer on " + config.i2cDevice + " (check wiring and address)");
         }
+        decoder_.reset(b);
         FDVE_INFO("rackui: firmware %d.%d", version[0], version[1]);
     }
 
@@ -222,59 +263,67 @@ public:
 
     MenuEvents poll() override
     {
-        MenuEvents events;
-        int16_t count;
-        uint8_t pushes;
-        bool down;
-        if (!readState(count, pushes, down))
+        RackUiDecoder::Reading reading;
+        if (!readState(reading))
         {
             if (!failed_) FDVE_WARN("rackui: I2C read failed");
             failed_ = true;
-            return events;
+            return {};
         }
         if (failed_)
         {
-            // Back after a failure or a module reset: resynchronise, report nothing.
+            // Back after a failure: resynchronise, report nothing.
             failed_ = false;
-            count_ = count;
-            pushes_ = pushes;
-            return events;
+            decoder_.reset(reading);
+            return {};
         }
 
-        const int16_t turned = static_cast<int16_t>(count - count_); // wraps correctly
-        const uint8_t pressed = static_cast<uint8_t>(pushes - pushes_);
-        count_ = count;
-        pushes_ = pushes;
-        // A jump this large is a module reset, not a hand on the knob.
-        if (turned > 200 || turned < -200) return events;
-
-        events.steps = config_.reverse ? -turned : turned;
-        press_.update(pressed, down, events);
+        const unsigned rejectedBefore = decoder_.rejected();
+        MenuEvents events = decoder_.update(reading, [this](RackUiDecoder::Reading& again) { return readState(again); });
+        if (decoder_.rejected() != rejectedBefore)
+        {
+            FDVE_DEBUG("rackui: unconfirmed reading discarded (count=%d pushes=%d)", reading.count, reading.pushes);
+            // Say so at 1, 10, 100, ... so a noisy bus is visible without flooding the log.
+            unsigned n = decoder_.rejected();
+            while (n >= 10 && n % 10 == 0) n /= 10;
+            if (n == 1) FDVE_WARN("rackui: %u unconfirmed reading(s) discarded so far", decoder_.rejected());
+        }
+        if (config_.reverse) events.steps = -events.steps;
         return events;
     }
 
 private:
+    // One transaction with a repeated start: register pointer, then the data.
     bool readRegisters(uint8_t first, uint8_t* out, size_t count)
     {
-        return write(fd_, &first, 1) == 1 && read(fd_, out, count) == static_cast<ssize_t>(count);
+        struct i2c_msg messages[2];
+        messages[0].addr = static_cast<__u16>(config_.i2cAddress);
+        messages[0].flags = 0;
+        messages[0].len = 1;
+        messages[0].buf = &first;
+        messages[1].addr = static_cast<__u16>(config_.i2cAddress);
+        messages[1].flags = I2C_M_RD;
+        messages[1].len = static_cast<__u16>(count);
+        messages[1].buf = out;
+        struct i2c_rdwr_ioctl_data transfer;
+        transfer.msgs = messages;
+        transfer.nmsgs = 2;
+        return ioctl(fd_, I2C_RDWR, &transfer) == 2;
     }
 
-    bool readState(int16_t& count, uint8_t& pushes, bool& down)
+    bool readState(RackUiDecoder::Reading& reading)
     {
         uint8_t raw[4];
         if (!readRegisters(0x04, raw, sizeof(raw))) return false;
-        count = static_cast<int16_t>((raw[0] << 8) | raw[1]);
-        pushes = raw[2];
-        down = raw[3] != 0;
+        reading.count = static_cast<int16_t>((raw[0] << 8) | raw[1]);
+        reading.pushes = raw[2];
+        reading.down = raw[3] == 0x01;
         return true;
     }
 
     MenuInputConfig config_;
-    PressTracker press_;
+    RackUiDecoder decoder_;
     int fd_ = -1;
-    int16_t count_ = 0;
-    uint8_t pushes_ = 0;
-    bool down_ = false;
     bool failed_ = false;
 };
 
