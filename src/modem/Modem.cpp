@@ -4,6 +4,7 @@
 #include <cstdio>
 #include <mutex>
 #include <stdexcept>
+#include <string>
 #include <vector>
 
 #include "MinimalRealTimeHelper.h"
@@ -20,11 +21,16 @@ extern "C"
 #include "lpcnet.h"
 }
 
-// The backend's MinimalTxRxThread reads these as globals. The application
-// has to define the first two; the backend defines the third.
+// The backend reads these as globals and expects the application to define
+// them. g_eoo_enqueued is the exception: the backend defines it.
 std::atomic<bool> g_tx{false};
 std::atomic<bool> endingTx{false};
 extern std::atomic<bool> g_eoo_enqueued;
+
+// Debug hooks of the backend: when set, the RADE steps dump vocoder features
+// to these files. Left empty, which disables the dumps.
+std::string utRxFeatureFile;
+std::string utTxFeatureFile;
 
 namespace fdve {
 
