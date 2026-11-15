@@ -51,6 +51,7 @@ struct MenuItem
 //   turn         move the selection, or change the value being edited
 //   press        enter, edit, confirm
 //   long press   back, or cancel the edit
+// (Opening the menu is the caller's business: a long press on the status screen.)
 // Every menu also starts with a "back" entry, for knobs where a long press is awkward.
 //
 // The drawing follows the same rule as the status screen: a header in the top

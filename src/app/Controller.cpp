@@ -65,6 +65,9 @@ public:
         noticeText_ = text;
     }
 
+    // Short presses on the status screen since the last call.
+    int takeModeToggles() { return modeToggles_.exchange(0); }
+
     bool restartRequested() const { return settings_.restartRequested(); }
     bool shutdownRequested() const { return settings_.shutdownRequested(); }
 
@@ -129,11 +132,17 @@ private:
                     redraw = true;
                 }
             }
-            else if (events.clicks > 0)
+            else if (events.backs > 0)
             {
-                menu.open(); // a press on the status screen opens the menu
+                menu.open(); // a long press on the status screen opens the menu
                 lastInput = now;
                 redraw = true;
+            }
+            else if (events.clicks > 0)
+            {
+                // A short press on the status screen switches between digital
+                // and analog. The control loop does the switching.
+                modeToggles_.fetch_add(events.clicks);
             }
 
             ModemStatus snapshot;
@@ -173,6 +182,7 @@ private:
     std::string noticeTitle_;
     std::string noticeText_;
     bool failing_ = false;
+    std::atomic<int> modeToggles_{0};
     std::atomic<bool> running_{true};
     std::thread thread_;
 };
@@ -266,6 +276,8 @@ RunResult runController(const Config& config, const std::string& configPath, con
          }});
 
     ModemState state = ModemState::Receive;
+    bool knobFlip = false;
+    const bool levelSwitch = config.modeSwitch.type == "gpio" && config.modeSwitch.action == "level";
     Clock::time_point endingDeadline;
     RunResult result = RunResult::Stopped;
 
@@ -274,7 +286,16 @@ RunResult runController(const Config& config, const std::string& configPath, con
     while (!stop.load())
     {
         const bool pressed = pttIn->pressed();
-        const bool wantAnalog = modeSwitch->analog();
+
+        // The mode comes from the mode switch, and a short press on the menu
+        // knob flips it. A latching switch ("level") is the exception: its
+        // position is the mode, so the knob does not override it.
+        if (ui.takeModeToggles() % 2 != 0)
+        {
+            if (levelSwitch) FDVE_INFO("mode: the knob press is ignored, the mode switch sets the mode");
+            else knobFlip = !knobFlip;
+        }
+        const bool wantAnalog = modeSwitch->analog() != knobFlip;
 
         // The mode only changes between overs.
         if (state == ModemState::Receive && wantAnalog != analog.load())

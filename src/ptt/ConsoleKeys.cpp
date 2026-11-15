@@ -31,7 +31,7 @@ ConsoleKeys::ConsoleKeys()
     raw.c_cc[VMIN] = 0;
     raw.c_cc[VTIME] = 0;
     tcsetattr(STDIN_FILENO, TCSANOW, &raw);
-    std::fprintf(stderr, "console keys: space = transmit, a = analog, arrows/enter/b = menu\n");
+    std::fprintf(stderr, "console keys: space = transmit, a = analog, b = open menu/back, arrows = turn, enter = press\n");
 }
 
 ConsoleKeys::~ConsoleKeys()

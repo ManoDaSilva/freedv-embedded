@@ -182,6 +182,9 @@ the same in both modes.
 | `type = "console"` | The `a` key changes the mode |
 | `type = "none"` | The mode stays at `modem.start_mode` |
 
+A short press on the menu knob also switches the mode, with any of these
+types except the latching switch. See [controls](#controls).
+
 The mode only changes while receiving. A change requested during an over takes
 effect when the over ends. Analog audio is passed at unity gain. Set levels
 with `alsamixer`.
@@ -322,12 +325,18 @@ settings in the config file.
 
 ### Controls
 
-| Action | Effect |
-|---|---|
-| Press, on the status screen | Opens the menu |
-| Turn | Moves the highlight, or changes the value being edited |
-| Press | Enters a submenu, starts editing, confirms |
-| Long press | Goes back, or cancels the edit |
+| Where | Action | Effect |
+|---|---|---|
+| Status screen | Long press | Opens the menu |
+| Status screen | Short press | Switches between digital and analog |
+| Menu | Turn | Moves the highlight, or changes the value being edited |
+| Menu | Press | Enters a submenu, starts editing, confirms |
+| Menu | Long press | Goes back, or cancels the edit. At the top level it closes the menu. |
+
+The short press changes the mode the same way the mode switch does: only while
+receiving, and a press during an over takes effect when the over ends. With a
+latching mode switch (`action = "level"`) the switch position is the mode, and
+the knob press is ignored.
 
 Every menu also starts with a back entry. The menu closes after `timeout_s`
 without input. PTT keeps working while the menu is open.
@@ -338,7 +347,7 @@ The knob is set in `[menu]`:
 |---|---|
 | `gpio` | A rotary encoder on three GPIO lines: `line_a`, `line_b`, `line_button`. Contacts to ground, internal pull-ups. |
 | `rackui` | A [Rack UI](https://github.com/Jankyneering/rack-ui) module on the same I2C bus as the display, at address 0x36 |
-| `console` | The keyboard, for bench tests: arrow keys turn, Enter presses, `b` goes back |
+| `console` | The keyboard, for bench tests: arrow keys turn, Enter is a short press, `b` a long press |
 | `none` | No menu |
 
 For a GPIO encoder, wire the common pin to ground and the two phases and the

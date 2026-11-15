@@ -11,8 +11,8 @@ namespace fdve {
 //   space        toggles transmit
 //   a            toggles analog mode
 //   up / down    menu: turn the knob (also "-" and "+")
-//   enter        menu: press the knob
-//   b            menu: long press (back)
+//   enter        knob: short press (switch mode; select in the menu)
+//   b            knob: long press (open the menu; back in the menu)
 // These are toggles because a terminal reports key presses, not releases.
 class ConsoleKeys
 {

@@ -85,9 +85,10 @@ refresh_ms = 250
 # rotate = false       # true turns the picture 180 degrees
 # contrast = 207       # 0 to 255
 
-# Settings menu on the display, operated with a rotary encoder and its push
-# button. Press to open the menu, turn to move, press to select, long press
-# to go back.
+# The knob: a rotary encoder with a push button.
+# On the status screen: a long press opens the settings menu, a short press
+# switches between digital and analog.
+# In the menu: turn to move, press to select, long press to go back.
 [menu]
 type = "none"          # "none", "gpio", "rackui" or "console"
 
@@ -118,7 +119,7 @@ type = "none"          # "none", "gpio", "rackui" or "console"
 # rx_led_line = 23       # header pin 16
 # state_leds_active_low = false
 
-# "console": arrow keys turn, Enter presses, "b" goes back. For bench tests.
+# "console": arrow keys turn, Enter is a short press, "b" a long press. For bench tests.
 
 # reverse = false        # swap the turning direction
 # long_press_ms = 600
