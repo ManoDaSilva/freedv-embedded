@@ -71,24 +71,13 @@ SettingsMenu::SettingsMenu(const Config& config, std::string configPath)
 
 void SettingsMenu::applyStoredVolumes()
 {
-    auto apply = [](Mixer* mixer, const SoundCardConfig& card, const char* name) {
+    auto apply = [](Mixer* mixer, const SoundCardConfig& card) {
         if (mixer == nullptr) return;
         if (card.playbackVolume >= 0) mixer->setPlaybackPercent(card.playbackVolume);
         if (card.captureVolume >= 0) mixer->setCapturePercent(card.captureVolume);
-
-        // A muted control passes no audio even at 100 %, and the volume menu
-        // would show nothing wrong. The modem needs all four paths, so switch
-        // any mute off, and say which controls are in use.
-        if (mixer->unmutePlayback())
-            FDVE_WARN("audio: %s playback control '%s' was muted, switched on", name, mixer->playbackControl().c_str());
-        if (mixer->unmuteCapture())
-            FDVE_WARN("audio: %s capture control '%s' was muted, switched on", name, mixer->captureControl().c_str());
-        FDVE_INFO("audio: %s mixer controls: playback '%s' at %d%%, capture '%s' at %d%%", name,
-                  mixer->hasPlayback() ? mixer->playbackControl().c_str() : "none", mixer->playbackPercent(),
-                  mixer->hasCapture() ? mixer->captureControl().c_str() : "none", mixer->capturePercent());
     };
-    apply(radioMixer_.get(), saved_.radio, "radio");
-    apply(headsetMixer_.get(), saved_.headset, "headset");
+    apply(radioMixer_.get(), saved_.radio);
+    apply(headsetMixer_.get(), saved_.headset);
 }
 
 void SettingsMenu::set(const std::string& section, const std::string& key, const std::string& literal, bool needsRestart)
