@@ -121,8 +121,8 @@ Config parseConfig(std::string_view text)
     auto ptt = section(root, "", "ptt", {"input", "output"});
     auto in = section(ptt, "ptt", "input", {"type", "chip", "line", "active_low", "bias", "debounce_ms"});
     read(in, "ptt.input", "type", config.pttInput.type);
-    if (config.pttInput.type != "gpio" && config.pttInput.type != "none")
-        fail("'ptt.input.type' must be \"gpio\" or \"none\"");
+    if (config.pttInput.type != "gpio" && config.pttInput.type != "console" && config.pttInput.type != "none")
+        fail("'ptt.input.type' must be \"gpio\", \"console\" or \"none\"");
     readGpio(in, "ptt.input", config.pttInput.gpio, true);
     if (config.pttInput.type == "gpio" && config.pttInput.gpio.line < 0) fail("'ptt.input.line' is required");
 

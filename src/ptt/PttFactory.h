@@ -10,7 +10,7 @@ namespace fdve {
 
 struct PttInputConfig
 {
-    std::string type = "gpio"; // "gpio" or "none"
+    std::string type = "gpio"; // "gpio", "console" or "none"
     GpioLine::Config gpio;
 };
 

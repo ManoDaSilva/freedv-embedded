@@ -64,6 +64,7 @@ src/
   audio/AudioFactory.*       config -> stream
   ptt/IPtt.h                 IPttInput and IPttOutput
   ptt/GpioLine.*             GPIO through the kernel character device
+  ptt/ConsolePttInput.*      space bar toggles transmit, for bench tests
   ptt/PttFactory.*           config -> PTT input and output
   display/IDisplay.h         update(ModemStatus)
   display/ConsoleDisplay.*   status line on stderr
@@ -140,6 +141,11 @@ Receive ── PTT pressed ──> Transmit ── PTT released ──> Transmit
   which carries the callsign. The radio has to stay keyed for it.
 - When that frame has been handed to the sound card, the program waits
   `tx_tail_ms` and releases PTT out.
+
+For bench tests without a button, set `ptt.input.type = "console"`. The space
+bar then toggles transmit: press once to start, once more to stop. It is a
+toggle because a terminal does not report key releases. It needs a terminal, so
+it does not work under systemd.
 
 With `ptt.output.type = "none"` the radio keys itself from the audio (sound
 card VOX), and the sequence only controls the modem.

@@ -30,7 +30,8 @@ sample_rate = 48000
 
 # PTT in: what tells the modem to transmit.
 [ptt.input]
-type = "gpio"          # "gpio" or "none" (receive only)
+type = "gpio"          # "gpio", "console" or "none" (receive only)
+                       # "console": the space bar toggles transmit, for bench tests in a terminal
 chip = "/dev/gpiochip0"  # see "gpioinfo"; on a Pi 5 the header may be gpiochip4, depending on the kernel
 line = 17              # BCM number, not the header pin number
 active_low = true      # button to ground

@@ -19,8 +19,10 @@ public:
     void write(const short* samples, int count) override;
 
 private:
+    void startCapture();
     std::string device_;
     int sampleRate_;
+    bool capture_;
     snd_pcm_t* pcm_ = nullptr;
 };
 

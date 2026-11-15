@@ -23,6 +23,7 @@ endif()
 
 # --- ptt ----------------------------------------------------------------------
 add_library(fdve_ptt STATIC
+    ptt/ConsolePttInput.cpp
     ptt/GpioLine.cpp
     ptt/PttFactory.cpp)
 target_include_directories(fdve_ptt PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})

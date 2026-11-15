@@ -2,6 +2,8 @@
 
 #include <stdexcept>
 
+#include "ptt/ConsolePttInput.h"
+
 namespace fdve {
 
 namespace {
@@ -50,6 +52,7 @@ std::unique_ptr<IPttInput> createPttInput(const PttInputConfig& config)
 {
     if (config.type == "none") return std::make_unique<NonePttInput>();
     if (config.type == "gpio") return std::make_unique<GpioPttInput>(config.gpio);
+    if (config.type == "console") return std::make_unique<ConsolePttInput>();
     throw std::runtime_error("unknown ptt.input type '" + config.type + "'");
 }
 

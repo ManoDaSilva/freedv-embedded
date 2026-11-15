@@ -57,6 +57,9 @@ int main()
     CHECK(c.pttOutput.gpio.line == 27);
     CHECK(c.txDelayMs == 50);
 
+    CHECK(fdve::parseConfig("[ptt.input]\ntype = \"console\"\n").pttInput.type == "console");
+    CHECK(rejects("[ptt.input]\ntype = \"keyboard\"\n", "ptt.input.type"));
+
     // Mistakes are errors, not silent defaults.
     CHECK(rejects("[modem]\nmod = \"RADEV1\"\n", "unknown key 'modem.mod'"));
     CHECK(rejects("[modme]\n", "unknown section 'modme'"));
