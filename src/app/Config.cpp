@@ -206,7 +206,7 @@ Config parseConfig(std::string_view text)
 
     auto menu = section(root, "", "menu",
                         {"type", "chip", "line_a", "line_b", "line_button", "active_low", "bias", "steps_per_detent",
-                         "i2c_device", "i2c_address", "reverse", "long_press_ms", "timeout_s"});
+                         "i2c_device", "i2c_address", "leds", "led_brightness", "reverse", "long_press_ms", "timeout_s"});
     read(menu, "menu", "type", config.menu.type);
     if (config.menu.type != "none" && config.menu.type != "gpio" && config.menu.type != "rackui" &&
         config.menu.type != "console")
@@ -225,6 +225,10 @@ Config parseConfig(std::string_view text)
     if (config.menu.stepsPerDetent == 3) fail("'menu.steps_per_detent' must be 1, 2 or 4");
     read(menu, "menu", "i2c_device", config.menu.i2cDevice);
     readInt(menu, "menu", "i2c_address", config.menu.i2cAddress, 0x03, 0x77);
+    read(menu, "menu", "leds", config.menu.leds);
+    if (config.menu.leds != "level" && config.menu.leds != "follow" && config.menu.leds != "off")
+        fail("'menu.leds' must be \"level\", \"follow\" or \"off\"");
+    readInt(menu, "menu", "led_brightness", config.menu.ledBrightness, 1, 64);
     read(menu, "menu", "reverse", config.menu.reverse);
     readInt(menu, "menu", "long_press_ms", config.menu.longPressMs, 200, 5000);
     readInt(menu, "menu", "timeout_s", config.menu.timeoutS, 5, 3600);

@@ -83,6 +83,12 @@ int main(int argc, char** argv)
     hot.radioInDbfs = 3;
     CHECK(barFill(render("hot", hot)) == 100);
 
+    // The level offered to other indicators is the one the bar shows.
+    CHECK(statusLevelFraction(idle) == 0.0f);
+    CHECK(statusLevelFraction(rx) == 0.75f);        // AF -15 dBFS
+    CHECK(statusLevelFraction(tx) == 0.9f);         // mic -6 dBFS while transmitting
+    CHECK(statusLevelFraction(hot) == 1.0f);
+
     // Transmitting: inverted TX box in the header and an inverted band in
     // the body, both mostly lit.
     CHECK(litPixels(fbTx, 0, 0, 27, 16) > 27 * 16 / 2);

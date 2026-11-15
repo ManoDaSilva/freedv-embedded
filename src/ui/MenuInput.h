@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <chrono>
 #include <cstdint>
 #include <functional>
@@ -23,6 +24,11 @@ class IMenuInput
 public:
     virtual ~IMenuInput() = default;
     virtual MenuEvents poll() = 0; // called every few milliseconds, must not block for long
+
+    // Indicator lights around the knob, for hardware that has them. The
+    // caller repeats the call that applies; drivers only act on a change.
+    virtual void showKnobPosition() {}            // lights follow the knob (menu open)
+    virtual void showLevel(float /*fraction*/) {} // bar graph, 0.0 to 1.0 (status screen)
 };
 
 struct MenuInputConfig
@@ -41,6 +47,9 @@ struct MenuInputConfig
     // rackui: Rack UI front panel module on I2C
     std::string i2cDevice = "/dev/i2c-1";
     int i2cAddress = 0x36;
+
+    std::string leds = "level";  // "level", "follow" or "off", see the example config
+    int ledBrightness = 24;      // 1 to 64
 
     bool reverse = false;        // swap the turning direction
     int longPressMs = 600;       // hold this long for "back"
@@ -104,6 +113,12 @@ private:
     Reading last_;
     unsigned rejected_ = 0;
 };
+
+// Brightness for the module's 12 LEDs (registers 0x10 to 0x1B) showing a level
+// as a bar. It uses the same arc as the module's own gauge animation: nine
+// LEDs starting at LED 8, the other three stay off. The LED at the tip of the
+// bar is dimmed in proportion, so the bar moves smoothly.
+std::array<uint8_t, 12> rackUiLevelFrame(float fraction, int brightness);
 
 // Quadrature decoding, shared by encoder drivers and testable on its own.
 class QuadratureDecoder

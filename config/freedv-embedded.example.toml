@@ -104,6 +104,13 @@ type = "none"          # "none", "gpio", "rackui" or "console"
 # i2c_device = "/dev/i2c-1"
 # i2c_address = 0x36
 
+# leds = "level"         # the LEDs around the Rack UI knob:
+                         #   "level":  AF level on the status screen (microphone
+                         #             while transmitting), knob position in the menu
+                         #   "follow": always the knob position
+                         #   "off"
+# led_brightness = 24    # 1 to 64
+
 # "console": arrow keys turn, Enter presses, "b" goes back. For bench tests.
 
 # reverse = false        # swap the turning direction

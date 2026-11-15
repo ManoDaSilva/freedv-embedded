@@ -151,6 +151,21 @@ static void testRackUiDecoder()
     e = decoder.update(Reading{-1, 0, false}, same(Reading{-1, 0, false}), ms(3200));
     CHECK(e.steps == -1);
     CHECK(!reread);
+
+    // LED bar: nine LEDs from LED 8 round to LED 4; LEDs 5, 6 and 7 stay off.
+    auto sum = [](const std::array<uint8_t, 12>& f) { int t = 0; for (auto v : f) t += v; return t; };
+    auto none = rackUiLevelFrame(0.0f, 32);
+    auto full = rackUiLevelFrame(1.0f, 32);
+    auto over = rackUiLevelFrame(2.5f, 32);
+    CHECK(sum(none) == 0 && sum(full) == 9 * 32 && over == full);
+    CHECK(full[5] == 0 && full[6] == 0 && full[7] == 0 && full[8] == 32 && full[4] == 32);
+    // A third of the way: the first three LEDs of the arc, in order.
+    auto third = rackUiLevelFrame(1.0f / 3.0f, 32);
+    CHECK(third[8] == 32 && third[9] == 32 && third[10] == 32 && third[11] == 0 && third[0] == 0);
+    // In between, the LED at the tip is dimmed in proportion.
+    auto half = rackUiLevelFrame(0.5f, 32); // 4.5 LEDs
+    CHECK(half[8] == 32 && half[11] == 32 && half[0] == 16 && half[1] == 0);
+    CHECK(rackUiLevelFrame(-1.0f, 32) == none);
 }
 
 static void testPatcher()

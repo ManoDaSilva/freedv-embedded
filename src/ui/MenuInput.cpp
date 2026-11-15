@@ -7,6 +7,7 @@
 #include <sys/ioctl.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <cerrno>
 #include <cstdint>
 #include <cstring>
@@ -71,6 +72,20 @@ MenuEvents RackUiDecoder::update(const Reading& first, const std::function<bool(
     }
     press_.update(presses, reading.down, events, now);
     return events;
+}
+
+std::array<uint8_t, 12> rackUiLevelFrame(float fraction, int brightness)
+{
+    constexpr int kArcStart = 8;
+    constexpr int kArcLeds = 9;
+    std::array<uint8_t, 12> frame{};
+    const float lit = std::clamp(fraction, 0.0f, 1.0f) * kArcLeds;
+    for (int i = 0; i < kArcLeds; i++)
+    {
+        const float share = std::clamp(lit - static_cast<float>(i), 0.0f, 1.0f);
+        frame[(kArcStart + i) % 12] = static_cast<uint8_t>(share * static_cast<float>(brightness) + 0.5f);
+    }
+    return frame;
 }
 
 // ---- QuadratureDecoder -------------------------------------------------------
@@ -257,6 +272,29 @@ public:
         }
         decoder_.reset(b);
         FDVE_INFO("rackui: firmware %d.%d", version[0], version[1]);
+        if (config.leds == "off") setAnimation(kAnimationAllOff);
+    }
+
+    void showKnobPosition() override
+    {
+        if (config_.leds == "off") return;
+        setAnimation(kAnimationFollowing);
+    }
+
+    void showLevel(float fraction) override
+    {
+        if (config_.leds != "level") return showKnobPosition();
+        const auto frame = rackUiLevelFrame(fraction, config_.ledBrightness);
+        const auto now = std::chrono::steady_clock::now();
+        const bool entering = animation_ != kAnimationIdle;
+        // At most 25 updates per second, and only when something changed.
+        if (!entering && (frame == leds_ || now - lastLedWrite_ < std::chrono::milliseconds(40))) return;
+        setAnimation(kAnimationIdle); // the LED registers are ours in this mode
+        uint8_t message[13];
+        message[0] = 0x10;
+        std::copy(frame.begin(), frame.end(), message + 1);
+        if (write(fd_, message, sizeof(message)) == static_cast<ssize_t>(sizeof(message))) leds_ = frame;
+        lastLedWrite_ = now;
     }
 
     ~RackUiInput() override { close(fd_); }
@@ -278,6 +316,8 @@ public:
             return {};
         }
 
+        checkModuleState();
+
         const unsigned rejectedBefore = decoder_.rejected();
         MenuEvents events = decoder_.update(reading, [this](RackUiDecoder::Reading& again) { return readState(again); });
         if (decoder_.rejected() != rejectedBefore)
@@ -293,6 +333,51 @@ public:
     }
 
 private:
+    static constexpr int kAnimationIdle = 0x00;      // LEDs set by the host
+    static constexpr int kAnimationFollowing = 0x80; // LEDs follow the knob
+    static constexpr int kAnimationAllOff = 0xFF;
+
+    void setAnimation(int id)
+    {
+        if (animation_ == id) return;
+        const uint8_t message[2] = {0x0E, static_cast<uint8_t>(id)};
+        if (write(fd_, message, 2) == 2) animation_ = id;
+        leds_.fill(0xFF); // unknown again: resend the bar when it is next shown
+    }
+
+    // Once a second, make sure the module is still set up the way this driver
+    // left it. A write can be corrupted on the bus like a read can, and the
+    // module can restart (its watchdog, a power dip). Two things matter:
+    //   - the config register must be 0: its "clear on read" bits would make
+    //     the counters jump and look like knob movement
+    //   - the LED animation must be the one selected here
+    void checkModuleState()
+    {
+        const auto now = std::chrono::steady_clock::now();
+        if (now - lastCheck_ < std::chrono::seconds(1)) return;
+        lastCheck_ = now;
+
+        uint8_t configRegister = 0;
+        uint8_t animation = 0;
+        if (!readRegisters(0x03, &configRegister, 1) || !readRegisters(0x0E, &animation, 1)) return;
+
+        if (configRegister != 0)
+        {
+            FDVE_WARN("rackui: config register was 0x%02x, setting it back to 0", configRegister);
+            const uint8_t message[2] = {0x03, 0x00};
+            if (write(fd_, message, 2) != 2) return;
+            RackUiDecoder::Reading a, b;
+            if (readState(a) && readState(b) && a.sameCounters(b)) decoder_.reset(b);
+        }
+        if (animation_ >= 0 && animation != animation_)
+        {
+            FDVE_DEBUG("rackui: LED animation was 0x%02x, expected 0x%02x", animation, animation_);
+            const int wanted = animation_;
+            animation_ = -1;
+            setAnimation(wanted);
+        }
+    }
+
     // One transaction with a repeated start: register pointer, then the data.
     bool readRegisters(uint8_t first, uint8_t* out, size_t count)
     {
@@ -325,6 +410,10 @@ private:
     RackUiDecoder decoder_;
     int fd_ = -1;
     bool failed_ = false;
+    int animation_ = -1; // what the module was last told; -1 = not told yet
+    std::array<uint8_t, 12> leds_{};
+    std::chrono::steady_clock::time_point lastLedWrite_{};
+    std::chrono::steady_clock::time_point lastCheck_{};
 };
 
 } // namespace

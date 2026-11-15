@@ -97,14 +97,20 @@ private:
                 redraw = true;
             }
 
+            ModemStatus snapshot;
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                snapshot = status_;
+            }
+
+            // Lights around the knob: its position while the menu is open,
+            // otherwise the same level as the bar on the status screen.
+            if (menu.active()) input_->showKnobPosition();
+            else input_->showLevel(statusLevelFraction(snapshot));
+
             const bool tick = now >= nextRefresh;
             if (tick || redraw)
             {
-                ModemStatus snapshot;
-                {
-                    std::lock_guard<std::mutex> lock(mutex_);
-                    snapshot = status_;
-                }
                 if (tick)
                 {
                     nextRefresh = now + milliseconds(refreshMs_);

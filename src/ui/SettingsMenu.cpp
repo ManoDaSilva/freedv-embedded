@@ -342,6 +342,8 @@ MenuItem SettingsMenu::build()
     // [menu]. The input type and its wiring are left out for the same reason.
     root.push_back(submenu("Controls", {
         toggle("Reverse knob", "menu", "reverse", c.menu.reverse),
+        choice("LEDs", "menu", "leds", c.menu.leds, {"level", "follow", "off"}),
+        number("LED bright.", "menu", "led_brightness", c.menu.ledBrightness, 1, 64, 4, ""),
         number("Long press", "menu", "long_press_ms", c.menu.longPressMs, 300, 2000, 100, "ms"),
         number("Menu timeout", "menu", "timeout_s", c.menu.timeoutS, 5, 300, 5, "s"),
     }));

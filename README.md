@@ -302,7 +302,6 @@ The display thread draws and then sleeps `refresh_ms`, so the real period is
 25 dB per second, so short peaks stay visible between updates.
 
 For a livelier bar, raise the bus speed and lower `refresh_ms` to about 100.
-Do not do this with a Rack UI module on the bus: it needs 100 kHz.
 Add this line to `/boot/firmware/config.txt` and reboot:
 
 ```
@@ -347,8 +346,27 @@ needs two clicks, change `steps_per_detent`. If it turns the wrong way, set
 `reverse = true`.
 
 The Rack UI module needs no settings beyond `type = "rackui"`. Its encoder
-count and push count registers are read as they are, without changing the
-module's configuration, so its LED ring keeps following the knob.
+count and push count registers are read as they are, free-running, and the
+differences are taken on the Pi.
+
+The LEDs around the module's knob are set with `leds` in `[menu]`:
+
+| `leds` | Status screen | Menu open |
+|---|---|---|
+| `level` (default) | A bar showing the AF level, or the microphone level while transmitting. It is the same value as the bar on the display. | Follow the knob |
+| `follow` | Follow the knob | Follow the knob |
+| `off` | Off | Off |
+
+The bar uses nine of the twelve LEDs, the same arc as the module's own gauge
+animation. `led_brightness` (1 to 64) sets how bright it is. Both settings are
+also in the menu under "Controls".
+
+For the bar, the program switches the module to manual LED control and writes
+the twelve brightness registers, at most 25 times per second and only when the
+level changed. For "follow" it selects the module's own following animation.
+Once a second it checks that the module still has the expected animation and
+an untouched config register, and corrects them if not. That covers a module
+restart and a write that was corrupted on the bus.
 
 The module reads are checked before they count. The module stretches the I2C
 clock, which the Raspberry Pi's I2C controller does not always handle, so a
@@ -356,9 +374,10 @@ read can occasionally return wrong bytes without an error. A changed reading is
 therefore only accepted when a second read returns the same values. Discarded
 readings are counted in the log (`rackui: N unconfirmed reading(s) discarded`).
 
-Keep the bus at 100 kHz when a Rack UI module is on it. Its firmware is written
-for that speed, so do not use the `i2c_arm_baudrate=400000` setting from the
-[refresh rate](#refresh-rate) section.
+The module's firmware documents 100 kHz as its bus speed. It has been seen to
+work at 400 kHz as well (`i2c_arm_baudrate=400000`, see
+[refresh rate](#refresh-rate)). If discarded readings pile up in the log at
+400 kHz, go back to 100 kHz.
 
 If the menu moves by itself, set `log.level = "debug"`. Every knob event is
 then logged with what it did, and for the Rack UI every discarded reading.
@@ -376,7 +395,7 @@ position, press on a blank to finish.
 | Audio | `[audio]`, `[audio.radio]`, `[audio.headset]` | Sound device for each of the four directions, sample rates, period, prebuffer |
 | PTT | `[ptt.input]`, `[ptt.output]` | Types, GPIO lines, polarity, bias, debounce, TX delay and tail |
 | Display | `[display]` | Refresh, contrast, rotation, console status line |
-| Controls | `[menu]` | Knob direction, long press time, menu timeout |
+| Controls | `[menu]` | Knob direction, LED mode and brightness, long press time, menu timeout |
 | Log | `[log]` | Level |
 
 The audio device lists show the sound cards present at that moment.

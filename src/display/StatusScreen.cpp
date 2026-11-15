@@ -19,6 +19,11 @@ constexpr float kBarFloorDbfs = -60.0f;
 constexpr int kBarY = 45;
 constexpr int kBarHeight = 14;
 
+float levelFraction(float dbfs)
+{
+    return std::clamp((dbfs - kBarFloorDbfs) / -kBarFloorDbfs, 0.0f, 1.0f);
+}
+
 // Level bar from -60 to 0 dBFS, with a mark at -10 dBFS.
 void levelBar(Framebuffer& fb, const char* label, float dbfs)
 {
@@ -27,7 +32,7 @@ void levelBar(Framebuffer& fb, const char* label, float dbfs)
     fb.text(0, kBarY + 3, label);
     fb.rect(x, kBarY, w, kBarHeight);
 
-    const float fraction = std::clamp((dbfs - kBarFloorDbfs) / -kBarFloorDbfs, 0.0f, 1.0f);
+    const float fraction = levelFraction(dbfs);
     const int inner = w - 4;
     fb.fillRect(x + 2, kBarY + 2, static_cast<int>(fraction * inner + 0.5f), kBarHeight - 4);
 
@@ -42,6 +47,11 @@ void centred(Framebuffer& fb, int y, const std::string& text, int scale, bool on
 }
 
 } // namespace
+
+float statusLevelFraction(const ModemStatus& s)
+{
+    return levelFraction(s.state != ModemState::Receive ? s.micDbfs : s.radioInDbfs);
+}
 
 void renderStatusScreen(const ModemStatus& s, Framebuffer& fb)
 {
