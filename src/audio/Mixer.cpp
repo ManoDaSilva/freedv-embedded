@@ -161,6 +161,28 @@ void Mixer::setCapturePercent(int percent)
     if (percent > 0 && snd_mixer_selem_has_capture_switch(e)) snd_mixer_selem_set_capture_switch_all(e, 1);
 }
 
+bool Mixer::unmutePlayback()
+{
+    auto e = static_cast<snd_mixer_elem_t*>(playback_);
+    if (!e || !snd_mixer_selem_has_playback_switch(e)) return false;
+    int on = 1;
+    snd_mixer_selem_get_playback_switch(e, SND_MIXER_SCHN_FRONT_LEFT, &on);
+    if (on) return false;
+    snd_mixer_selem_set_playback_switch_all(e, 1);
+    return true;
+}
+
+bool Mixer::unmuteCapture()
+{
+    auto e = static_cast<snd_mixer_elem_t*>(capture_);
+    if (!e || !snd_mixer_selem_has_capture_switch(e)) return false;
+    int on = 1;
+    snd_mixer_selem_get_capture_switch(e, SND_MIXER_SCHN_FRONT_LEFT, &on);
+    if (on) return false;
+    snd_mixer_selem_set_capture_switch_all(e, 1);
+    return true;
+}
+
 #else // no ALSA: nothing to control
 
 std::vector<AlsaCard> listAlsaCards() { return {}; }
@@ -172,6 +194,8 @@ int Mixer::playbackPercent() { return 0; }
 int Mixer::capturePercent() { return 0; }
 void Mixer::setPlaybackPercent(int) {}
 void Mixer::setCapturePercent(int) {}
+bool Mixer::unmutePlayback() { return false; }
+bool Mixer::unmuteCapture() { return false; }
 
 #endif
 

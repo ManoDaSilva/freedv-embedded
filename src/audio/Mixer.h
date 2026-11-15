@@ -40,6 +40,11 @@ public:
     void setPlaybackPercent(int percent); // also unmutes when above zero
     void setCapturePercent(int percent);
 
+    // A control can be muted while its volume reads 100 %. These switch the
+    // mute off and return true if it was on.
+    bool unmutePlayback();
+    bool unmuteCapture();
+
 private:
     void* handle_ = nullptr;   // snd_mixer_t*
     void* playback_ = nullptr; // snd_mixer_elem_t*
