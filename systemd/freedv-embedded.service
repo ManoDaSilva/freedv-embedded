@@ -1,0 +1,17 @@
+[Unit]
+Description=FreeDV embedded modem
+After=sound.target
+
+[Service]
+ExecStart=/usr/local/bin/freedv-embedded -c /etc/freedv-embedded/freedv-embedded.toml
+Restart=on-failure
+RestartSec=2
+# Needs the "audio" and "gpio" groups on Raspberry Pi OS.
+User=freedv
+SupplementaryGroups=audio gpio
+# Lets the audio threads ask for real-time scheduling.
+LimitRTPRIO=95
+Nice=-10
+
+[Install]
+WantedBy=multi-user.target

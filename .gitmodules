@@ -1,0 +1,4 @@
+[submodule "external/freedv-backend"]
+	path = external/freedv-backend
+	url = https://github.com/freedv/freedv-backend
+	branch = main

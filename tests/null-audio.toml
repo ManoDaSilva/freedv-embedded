@@ -1,0 +1,6 @@
+[audio.radio]
+type = "null"
+[audio.headset]
+type = "null"
+[ptt.input]
+type = "none"
