@@ -26,7 +26,7 @@ static int litPixels(const Framebuffer& fb, int x, int y, int w, int h)
 // Number of lit pixels along the middle row of the level bar's inside.
 static int barFill(const Framebuffer& fb)
 {
-    return litPixels(fb, 26, 40, 100, 1);
+    return litPixels(fb, 26, 52, 100, 1);
 }
 
 int main(int argc, char** argv)
@@ -83,25 +83,49 @@ int main(int argc, char** argv)
     hot.radioInDbfs = 3;
     CHECK(barFill(render("hot", hot)) == 100);
 
-    // Transmitting shows an inverted band across the main area: mostly lit.
-    CHECK(litPixels(fbTx, 0, 9, 128, 23) > 128 * 23 / 2);
-    CHECK(litPixels(fbRx, 0, 9, 128, 23) < 128 * 23 / 2);
+    // Transmitting: inverted TX box in the header and an inverted band in
+    // the body, both mostly lit.
+    CHECK(litPixels(fbTx, 0, 0, 27, 16) > 27 * 16 / 2);
+    CHECK(litPixels(fbRx, 0, 0, 27, 16) < 27 * 16 / 2);
+    CHECK(litPixels(fbTx, 0, 17, 128, 23) > 128 * 23 / 2);
+    CHECK(litPixels(fbRx, 0, 17, 128, 23) < 128 * 23 / 2);
 
     // The SNR is the largest thing on the screen. With sync it shows the
     // value ("12" lights more pixels than "--"), in analog mode it is absent.
-    const int snrRx = litPixels(fbRx, 40, 10, 64, 21);
-    const int snrIdle = litPixels(fbIdle, 40, 10, 64, 21);
+    const int snrRx = litPixels(fbRx, 44, 18, 64, 21);
+    const int snrIdle = litPixels(fbIdle, 44, 18, 64, 21);
     CHECK(snrIdle > 0 && snrRx > 2 * snrIdle);
-    CHECK(litPixels(fbAnalog, 0, 17, 18, 7) == 0); // no "SNR" label
+    CHECK(litPixels(fbIdle, 112, 32, 16, 8) > 0);   // "dB"
+    CHECK(litPixels(fbAnalog, 112, 32, 16, 8) == 0);
 
-    // "SYNC" appears at the top right only with sync.
-    CHECK(litPixels(fbRx, 104, 0, 24, 8) > 0);
-    CHECK(litPixels(fbIdle, 104, 0, 24, 8) == 0);
+    // "SYNC" appears under the mode name only with sync.
+    CHECK(litPixels(fbRx, 0, 29, 24, 8) > 0);
+    CHECK(litPixels(fbIdle, 0, 29, 24, 8) == 0);
 
-    // Callsign area: heard callsign in RX, own callsign in TX, differ.
-    CHECK(litPixels(fbRx, 0, 50, 128, 14) > 0);
-    CHECK(litPixels(fbTx, 0, 50, 128, 14) > 0);
-    CHECK(litPixels(fbRx, 0, 50, 128, 14) != litPixels(fbTx, 0, 50, 128, 14));
+    // Callsign in the header: heard callsign in RX, own callsign in TX,
+    // nothing before a callsign was heard.
+    CHECK(litPixels(fbRx, 34, 0, 94, 16) > 0);
+    CHECK(litPixels(fbTx, 34, 0, 94, 16) > 0);
+    CHECK(litPixels(fbRx, 34, 0, 94, 16) != litPixels(fbTx, 34, 0, 94, 16));
+    CHECK(litPixels(fbIdle, 34, 0, 94, 16) == 0);
+
+    // Two-colour displays change colour between rows 15 and 16. Row 16 must
+    // stay empty in every situation, so nothing straddles the change.
+    ModemStatus ending = tx;
+    ending.state = ModemState::TransmitEnding;
+    ModemStatus analogTx = analog;
+    analogTx.state = ModemState::Transmit;
+    ModemStatus longCall = rx;
+    longCall.rxCallsign = "VK5DGR/QRP12";
+    longCall.snrDb = -12;
+    for (const auto& fbCheck : {fbIdle, fbRx, fbTx, fbAnalog, render("5_tx_end", ending),
+                                render("6_analog_tx", analogTx), render("7_long", longCall)})
+        CHECK(litPixels(fbCheck, 0, 16, 128, 1) == 0);
+
+    // A long callsign and a negative SNR must not run into their neighbours.
+    auto fbLong = render("7_long", longCall);
+    CHECK(litPixels(fbLong, 27, 0, 7, 16) == 0);  // gap between RX and the callsign
+    CHECK(litPixels(fbLong, 36, 18, 5, 21) == 0); // gap between the mode name and the SNR
 
     std::printf(failures == 0 ? "PASS\n" : "FAILED\n");
     return failures == 0 ? 0 : 1;

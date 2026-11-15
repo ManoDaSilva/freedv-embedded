@@ -7,16 +7,24 @@ namespace fdve {
 
 namespace {
 
+// Two-colour OLED modules have a strip of 16 rows in one colour (usually
+// yellow) above 48 rows in another (usually blue). The layout keeps a header
+// inside the strip and everything else below it. Nothing is drawn on row 16,
+// so no element straddles the colour change. On a single colour display the
+// same layout simply reads as a header and a body.
+constexpr int kHeaderHeight = 16;
+constexpr int kBodyTop = kHeaderHeight + 1;
+
 constexpr float kBarFloorDbfs = -60.0f;
-constexpr int kBarY = 34;
-constexpr int kBarHeight = 12;
+constexpr int kBarY = 45;
+constexpr int kBarHeight = 14;
 
 // Level bar from -60 to 0 dBFS, with a mark at -10 dBFS.
 void levelBar(Framebuffer& fb, const char* label, float dbfs)
 {
     const int x = 24;
     const int w = Framebuffer::Width - x;
-    fb.text(0, kBarY + 2, label);
+    fb.text(0, kBarY + 3, label);
     fb.rect(x, kBarY, w, kBarHeight);
 
     const float fraction = std::clamp((dbfs - kBarFloorDbfs) / -kBarFloorDbfs, 0.0f, 1.0f);
@@ -40,42 +48,43 @@ void renderStatusScreen(const ModemStatus& s, Framebuffer& fb)
     fb.clear();
     const bool transmitting = s.state != ModemState::Receive;
 
-    // Header line, small: mode on the left, sync or over state on the right.
-    fb.text(0, 0, s.analog ? "ANALOG" : s.modeName);
-    std::string flag;
-    if (s.state == ModemState::TransmitEnding) flag = "END";
-    else if (!transmitting && !s.analog && s.sync) flag = "SYNC";
-    fb.text(Framebuffer::Width - Framebuffer::textWidth(flag), 0, flag);
+    // ---- Header strip (rows 0 to 15) ----------------------------------------
+    // RX/TX on the left, inverted while transmitting. Callsign on the right:
+    // the last one heard while receiving, our own while transmitting.
+    if (transmitting) fb.fillRect(0, 0, 27, kHeaderHeight);
+    fb.text(2, 1, transmitting ? "TX" : "RX", 2, !transmitting);
 
+    std::string callsign = transmitting ? s.ownCallsign : s.rxCallsign;
+    if (callsign.size() > 8) callsign.resize(8);
+    fb.text(Framebuffer::Width - Framebuffer::textWidth(callsign, 2), 1, callsign, 2);
+
+    // ---- Body (rows 17 to 63) -------------------------------------------------
     // Main area, large. Receiving: the SNR. Transmitting: an inverted TX band.
     if (transmitting)
     {
-        fb.fillRect(0, 9, Framebuffer::Width, 23);
-        centred(fb, 10, "TX", 3, false);
+        fb.fillRect(0, kBodyTop, Framebuffer::Width, 23);
+        centred(fb, kBodyTop + 1, "TX", 3, false);
+        if (s.state == ModemState::TransmitEnding) fb.text(2, kBodyTop + 8, "END", 1, false);
     }
     else if (s.analog)
     {
-        centred(fb, 13, "RX", 2);
+        centred(fb, kBodyTop + 4, "ANALOG", 2);
     }
     else
     {
-        fb.text(0, 17, "SNR");
+        // Mode and sync, small, on the left. SNR, large, on the right.
+        fb.text(0, kBodyTop + 2, s.modeName);
+        if (s.sync) fb.text(0, kBodyTop + 12, "SYNC");
         const std::string value = s.sync ? std::to_string(s.snrDb) : "--";
-        const int right = 104;
-        fb.text(right - Framebuffer::textWidth(value, 3), 10, value, 3);
-        fb.text(right + 4, 24, "dB");
+        const int right = 108;
+        fb.text(right - Framebuffer::textWidth(value, 3), kBodyTop + 1, value, 3);
+        fb.text(right + 4, kBodyTop + 15, "dB");
     }
 
     // One level bar: what comes from the radio while receiving, the
     // microphone while transmitting (the radio input carries nothing then).
     if (transmitting) levelBar(fb, "MIC", s.micDbfs);
     else levelBar(fb, "AF", s.radioInDbfs);
-
-    // Bottom: callsign, large, centred.
-    std::string callsign = transmitting ? s.ownCallsign : s.rxCallsign;
-    if (callsign.size() > 10) callsign.resize(10);
-    if (!callsign.empty()) centred(fb, 50, callsign, 2);
-    else if (!s.analog && !transmitting) fb.text(0, 55, "no callsign heard yet");
 }
 
 } // namespace fdve
