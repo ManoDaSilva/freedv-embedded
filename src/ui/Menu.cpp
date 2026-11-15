@@ -142,6 +142,7 @@ void Menu::click()
             switch (item->kind)
             {
                 case MenuItem::Kind::Submenu:
+                    if (item->onEnter) item->onEnter(*item);
                     levels_.push_back({item, item->children.empty() || item->startOnBack ? 0 : 1});
                     break;
                 case MenuItem::Kind::Choice:

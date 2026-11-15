@@ -463,12 +463,23 @@ MenuItem SettingsMenu::build()
             }
             return last;
         };
-        root.push_back(submenu("System", {
-            info("IP", [this] { return system_.ipAddress(); }),
-            info("CPU", cpu),
-            info("RAM", [this] { return system_.memory(); }),
-            info("Temp", [this] { return system_.temperature(); }),
-        }));
+        // The network rows are made when the menu is entered: one per
+        // interface that is up and has an address (eth0, wlan0, ...), each
+        // labelled with the interface name. With none up, one row says so.
+        MenuItem systemMenu = submenu("System", {});
+        systemMenu.onEnter = [this, info, cpu](MenuItem& menu) {
+            menu.children.clear();
+            for (const auto& address : system_.addresses())
+            {
+                const std::string name = address.interface;
+                menu.children.push_back(info(name, [this, name] { return system_.addressOf(name); }));
+            }
+            if (menu.children.empty()) menu.children.push_back(info("Network", [] { return std::string("none"); }));
+            menu.children.push_back(info("CPU", cpu));
+            menu.children.push_back(info("RAM", [this] { return system_.memory(); }));
+            menu.children.push_back(info("Temp", [this] { return system_.temperature(); }));
+        };
+        root.push_back(std::move(systemMenu));
 
         // Confirmation: the first press only opens this submenu, with "back"
         // highlighted. Shutting down takes a turn and a second press.

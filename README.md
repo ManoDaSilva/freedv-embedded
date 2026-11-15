@@ -417,7 +417,7 @@ position, press on a blank to finish.
 | Display | `[display]` | Refresh, contrast, rotation, console status line |
 | Controls | `[menu]` | Knob direction, LED mode and brightness, long press time, menu timeout |
 | Log | `[log]` | Level |
-| System | | Read-only: IP address, CPU load, memory in use, CPU temperature |
+| System | | Read-only: IP address of each connected network interface, CPU load, memory in use, CPU temperature |
 | Shut down | | Powers the Pi off cleanly, after a confirmation |
 
 The audio device lists show the sound devices present at that moment, and only
@@ -454,11 +454,13 @@ with the error, as before.
 
 ### System and shut down
 
-"System" shows four readings about the Pi. They update while the menu is open.
+"System" shows readings about the Pi. The values update while the menu is
+open. Which network rows exist is decided when the menu is entered, so after
+plugging in a cable, leave "System" and enter it again.
 
 | Row | Shows |
 |---|---|
-| IP | The first IPv4 address that is not the loopback address |
+| `eth0`, `wlan0`, ... | The IPv4 address of that network interface. There is one row per interface that is up and has an address, so wired and Wi-Fi both show when both are connected. With none connected, a single "Network: none" row. |
 | CPU | Load across all cores over the last second or so |
 | RAM | Memory in use and total, in MB |
 | Temp | CPU temperature |

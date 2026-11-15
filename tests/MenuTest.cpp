@@ -194,9 +194,12 @@ static void testSystemInfo()
     info.meminfoPath = info.temperaturePath = info.statPath = dir + "/does-not-exist";
     CHECK(info.memory() == "n/a" && info.temperature() == "n/a" && info.cpuLoad() == "n/a");
 
-    // The real system: an address or "none", at most 15 characters.
-    const std::string ip = SystemInfo().ipAddress();
-    CHECK(!ip.empty() && ip.size() <= 15);
+    // Network: an interface that lost its address reads "down".
+    info.addressSource = [] { return std::vector<SystemInfo::Address>{{"eth0", "10.0.0.5"}}; };
+    CHECK(info.addressOf("eth0") == "10.0.0.5" && info.addressOf("wlan0") == "down");
+    // The real system: no loopback, and every address fits the display.
+    for (const auto& address : SystemInfo().addresses())
+        CHECK(address.interface != "lo" && !address.ip.empty() && address.ip.size() <= 15);
     CHECK(SystemInfo().memory().find(" MB") != std::string::npos);
 
     for (const char* name : {"/stat", "/meminfo", "/temp"}) std::remove((dir + name).c_str());
@@ -389,14 +392,34 @@ static void testSettings()
                               "Save & restart", "Discard changes", "System", "Shut down"})
         CHECK(select(menu, label));
 
-    // System info: four read-only rows. Pressing one does nothing.
+    // System: read-only rows. One network row per interface that is up,
+    // named after the interface, made when the menu is entered.
+    using Address = SystemInfo::Address;
+    std::vector<Address> network = {{"eth0", "192.168.1.42"}, {"wlan0", "192.168.100.123"}};
+    settings.system().addressSource = [&] { return network; };
     CHECK(select(menu, "System"));
     menu.handle(click());
-    for (const char* label : {"IP", "CPU", "RAM", "Temp"}) CHECK(select(menu, label));
+    for (const char* label : {"eth0", "wlan0", "CPU", "RAM", "Temp"}) CHECK(select(menu, label));
+    CHECK(!select(menu, "Network"));
     snapshot(menu, "menu_9_system");
+    // Pressing a row does nothing.
+    CHECK(select(menu, "Temp"));
     menu.handle(click());
     CHECK(!menu.editing() && menu.selectedLabel() == "Temp");
     menu.handle(longPress());
+
+    // Only Wi-Fi up: the eth0 row is gone on the next visit.
+    network = {{"wlan0", "192.168.100.123"}};
+    menu.handle(click());
+    CHECK(select(menu, "wlan0") && !select(menu, "eth0") && select(menu, "CPU"));
+    menu.handle(longPress());
+
+    // Nothing up: one row says so.
+    network.clear();
+    menu.handle(click());
+    CHECK(select(menu, "Network") && !select(menu, "wlan0") && select(menu, "Temp"));
+    menu.handle(longPress());
+    CHECK(menu.selectedLabel() == "System");
 
     // Shut down: opens on "back", so two presses in a row do nothing.
     CHECK(select(menu, "Shut down"));

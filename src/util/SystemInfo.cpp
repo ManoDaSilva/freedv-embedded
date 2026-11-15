@@ -11,11 +11,13 @@
 
 namespace fdve {
 
-std::string SystemInfo::ipAddress() const
+std::vector<SystemInfo::Address> SystemInfo::addresses() const
 {
+    if (addressSource) return addressSource();
+
+    std::vector<Address> result;
     struct ifaddrs* list = nullptr;
-    if (getifaddrs(&list) != 0) return "n/a";
-    std::string result = "none";
+    if (getifaddrs(&list) != 0) return result;
     for (struct ifaddrs* entry = list; entry != nullptr; entry = entry->ifa_next)
     {
         if (entry->ifa_addr == nullptr || entry->ifa_addr->sa_family != AF_INET) continue;
@@ -23,11 +25,17 @@ std::string SystemInfo::ipAddress() const
         char text[INET_ADDRSTRLEN];
         const auto* address = reinterpret_cast<const struct sockaddr_in*>(entry->ifa_addr);
         if (inet_ntop(AF_INET, &address->sin_addr, text, sizeof(text)) == nullptr) continue;
-        result = text;
-        break;
+        result.push_back({entry->ifa_name, text});
     }
     freeifaddrs(list);
     return result;
+}
+
+std::string SystemInfo::addressOf(const std::string& interface) const
+{
+    for (const auto& address : addresses())
+        if (address.interface == interface) return address.ip;
+    return "down";
 }
 
 std::string SystemInfo::cpuLoad()

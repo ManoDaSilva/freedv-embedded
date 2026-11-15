@@ -20,6 +20,9 @@ struct MenuItem
 
     // Submenu
     std::vector<MenuItem> children;
+    // Called just before the operator enters this submenu. It may replace
+    // "children", for menus whose rows depend on the moment (network interfaces).
+    std::function<void(MenuItem&)> onEnter;
     std::function<void()> onLeave; // called when the operator leaves this submenu
     bool startOnBack = false;      // open with the back entry highlighted (confirmation menus)
 

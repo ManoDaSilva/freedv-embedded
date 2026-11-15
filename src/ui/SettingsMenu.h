@@ -44,6 +44,7 @@ public:
 
     bool restartRequested() const { return restartRequested_.load(); }
     bool shutdownRequested() const { return shutdownRequested_.load(); }
+    SystemInfo& system() { return system_; }
 
     // Applies the volumes stored in the config to the sound cards. Called at start-up.
     void applyStoredVolumes();
