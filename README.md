@@ -362,11 +362,30 @@ animation. `led_brightness` (1 to 64) sets how bright it is. Both settings are
 also in the menu under "Controls".
 
 For the bar, the program switches the module to manual LED control and writes
-the twelve brightness registers, at most 25 times per second and only when the
-level changed. For "follow" it selects the module's own following animation.
-Once a second it checks that the module still has the expected animation and
-an untouched config register, and corrects them if not. That covers a module
-restart and a write that was corrupted on the bus.
+only the brightness registers that changed, at most 10 times per second. For
+"follow" it selects the module's own following animation.
+
+Once a second the program checks that the module still has the expected
+animation and an untouched config register, and corrects them if not. That
+covers a module restart and a write that was corrupted on the bus. If the
+module drops out of LED level mode three times within a minute, the program
+stops writing LED levels until its next start, lets the LEDs follow the knob,
+and logs a warning with the module's last reset cause. If you see that
+warning, try the bus at 100 kHz.
+
+The module also has two separate lamps, TX_EN and RX_EN, wired to GPIO lines
+instead of I2C:
+
+| Lamp | Lit | Default line | Header pin |
+|---|---|---|---|
+| TX_EN | while transmitting | GPIO 22 (`tx_led_line`) | 15 |
+| RX_EN | while the receiver has sync | GPIO 23 (`rx_led_line`) | 16 |
+
+They are only driven with `type = "rackui"`. Set a line to -1 to leave that
+lamp alone. Do not use these two lines for PTT or the mode switch.
+
+At start-up the program waits up to 3 seconds for the module to answer, and
+logs the firmware version and the cause of the module's last reset.
 
 The module reads are checked before they count. The module stretches the I2C
 clock, which the Raspberry Pi's I2C controller does not always handle, so a

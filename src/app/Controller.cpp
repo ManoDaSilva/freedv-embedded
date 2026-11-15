@@ -107,6 +107,7 @@ private:
             // otherwise the same level as the bar on the status screen.
             if (menu.active()) input_->showKnobPosition();
             else input_->showLevel(statusLevelFraction(snapshot));
+            input_->showState(snapshot.state != ModemState::Receive, snapshot.sync);
 
             const bool tick = now >= nextRefresh;
             if (tick || redraw)

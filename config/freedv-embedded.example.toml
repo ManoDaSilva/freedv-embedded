@@ -18,7 +18,7 @@ start_mode = "digital" # "digital" or "analog": the mode after start-up
 [mode_switch]
 type = "none"          # "none", "gpio" or "console" (the "a" key toggles)
 # chip = "/dev/gpiochip0"
-# line = 22
+# line = 24
 # active_low = true
 # bias = "pull-up"
 # debounce_ms = 20
@@ -110,6 +110,13 @@ type = "none"          # "none", "gpio", "rackui" or "console"
                          #   "follow": always the knob position
                          #   "off"
 # led_brightness = 24    # 1 to 64
+
+# The Rack UI's TX_EN and RX_EN lamps are wired to GPIO lines. TX lights while
+# transmitting, RX while the receiver has sync. -1 leaves a lamp alone.
+# They use the "chip" set above. Only used with type = "rackui".
+# tx_led_line = 22       # header pin 15
+# rx_led_line = 23       # header pin 16
+# state_leds_active_low = false
 
 # "console": arrow keys turn, Enter presses, "b" goes back. For bench tests.
 

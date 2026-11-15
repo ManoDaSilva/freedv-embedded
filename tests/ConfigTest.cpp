@@ -116,6 +116,10 @@ int main()
     CHECK(m.menu.type == "gpio" && m.menu.lineA == 5 && m.menu.lineB == 6 && m.menu.lineButton == 13);
     CHECK(m.menu.stepsPerDetent == 2 && m.menu.reverse && m.menu.activeLow);
     CHECK(fdve::parseConfig(q("[menu]\ntype = \"rackui\"\n")).menu.type == "rackui");
+    CHECK(example.menu.txLedLine == 22 && example.menu.rxLedLine == 23 && !example.menu.stateLedsActiveLow);
+    auto lamps = fdve::parseConfig(q("[menu]\ntype = \"rackui\"\ntx_led_line = -1\nrx_led_line = 17\nleds = \"follow\"\n"));
+    CHECK(lamps.menu.txLedLine == -1 && lamps.menu.rxLedLine == 17 && lamps.menu.leds == "follow");
+    CHECK(rejects(q("[menu]\nleds = \"blink\"\n").c_str(), "menu.leds"));
     CHECK(rejects(q("[menu]\ntype = \"gpio\"\nline_a = 5\n").c_str(), "are required"));
     CHECK(rejects(q("[menu]\ntype = \"knob\"\n").c_str(), "menu.type"));
     CHECK(rejects(q("[menu]\nsteps_per_detent = 3\n").c_str(), "1, 2 or 4"));

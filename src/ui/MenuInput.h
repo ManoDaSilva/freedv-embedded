@@ -29,6 +29,9 @@ public:
     // caller repeats the call that applies; drivers only act on a change.
     virtual void showKnobPosition() {}            // lights follow the knob (menu open)
     virtual void showLevel(float /*fraction*/) {} // bar graph, 0.0 to 1.0 (status screen)
+
+    // Separate transmit and receive lamps, for hardware that has them.
+    virtual void showState(bool /*transmitting*/, bool /*sync*/) {}
 };
 
 struct MenuInputConfig
@@ -50,6 +53,11 @@ struct MenuInputConfig
 
     std::string leds = "level";  // "level", "follow" or "off", see the example config
     int ledBrightness = 24;      // 1 to 64
+    // The module's TX_EN and RX_EN lamps are wired to GPIO lines, not to I2C.
+    // -1 leaves a lamp alone.
+    int txLedLine = 22;          // header pin 15
+    int rxLedLine = 23;          // header pin 16
+    bool stateLedsActiveLow = false;
 
     bool reverse = false;        // swap the turning direction
     int longPressMs = 600;       // hold this long for "back"

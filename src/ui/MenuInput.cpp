@@ -12,8 +12,10 @@
 #include <cstdint>
 #include <cstring>
 #include <stdexcept>
+#include <thread>
 
 #include "ptt/ConsoleKeys.h"
+#include "ptt/GpioLine.h"
 #include "util/Log.h"
 
 namespace fdve {
@@ -256,23 +258,64 @@ public:
             close(fd_);
             throw std::runtime_error("rackui: cannot select I2C address: " + std::string(std::strerror(err)));
         }
-        uint8_t version[2];
+        // The module may be restarting (its watchdog, or power just applied),
+        // and a single read can fail on a busy bus. Keep trying for a moment
+        // before giving up, and start from a reading that was seen twice.
+        uint8_t version[2] = {0, 0};
+        uint8_t resetCause = 0;
         RackUiDecoder::Reading a, b;
-        bool ok = readRegisters(0x00, version, 2);
-        // Start from a reading that was seen twice.
-        for (int attempt = 0; ok && attempt < 5; attempt++)
+        bool ok = false;
+        for (int attempt = 0; attempt < 30 && !ok; attempt++)
         {
-            ok = readState(a) && readState(b);
-            if (ok && a.sameCounters(b)) break;
+            if (attempt > 0) std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            ok = readRegisters(0x00, version, 2) && readRegisters(0x02, &resetCause, 1) && readState(a) &&
+                 readState(b) && a.sameCounters(b);
         }
         if (!ok)
         {
             close(fd_);
-            throw std::runtime_error("rackui: no answer on " + config.i2cDevice + " (check wiring and address)");
+            throw std::runtime_error("rackui: no answer on " + config.i2cDevice + " after 3 seconds (check wiring and address)");
         }
         decoder_.reset(b);
-        FDVE_INFO("rackui: firmware %d.%d", version[0], version[1]);
+        FDVE_INFO("rackui: firmware %d.%d, last module reset: %s", version[0], version[1],
+                  resetCauseText(resetCause).c_str());
+
+        // TX_EN and RX_EN lamps, on GPIO lines.
+        try
+        {
+            GpioLine::Config line;
+            line.chip = config.chip;
+            line.activeLow = config.stateLedsActiveLow;
+            if (config.txLedLine >= 0)
+            {
+                line.line = config.txLedLine;
+                txLed_ = std::make_unique<GpioLine>(line, GpioLine::Direction::Output, "freedv-tx-led");
+            }
+            if (config.rxLedLine >= 0)
+            {
+                line.line = config.rxLedLine;
+                rxLed_ = std::make_unique<GpioLine>(line, GpioLine::Direction::Output, "freedv-rx-led");
+            }
+        }
+        catch (...)
+        {
+            close(fd_);
+            throw;
+        }
+
         if (config.leds == "off") setAnimation(kAnimationAllOff);
+    }
+
+    ~RackUiInput() override
+    {
+        try { showState(false, false); } catch (...) {}
+        close(fd_);
+    }
+
+    void showState(bool transmitting, bool sync) override
+    {
+        if (txLed_ && transmitting != txLit_) { txLed_->set(transmitting); txLit_ = transmitting; }
+        if (rxLed_ && sync != rxLit_) { rxLed_->set(sync); rxLit_ = sync; }
     }
 
     void showKnobPosition() override
@@ -283,21 +326,31 @@ public:
 
     void showLevel(float fraction) override
     {
-        if (config_.leds != "level") return showKnobPosition();
-        const auto frame = rackUiLevelFrame(fraction, config_.ledBrightness);
+        if (config_.leds != "level" || ledWritesSuspended_) return showKnobPosition();
         const auto now = std::chrono::steady_clock::now();
-        const bool entering = animation_ != kAnimationIdle;
-        // At most 25 updates per second, and only when something changed.
-        if (!entering && (frame == leds_ || now - lastLedWrite_ < std::chrono::milliseconds(40))) return;
+        // At most 10 updates per second: the module handles its I2C traffic
+        // in an interrupt handler with little time to spare, so keep it light.
+        if (animation_ == kAnimationIdle && now - lastLedWrite_ < std::chrono::milliseconds(100)) return;
         setAnimation(kAnimationIdle); // the LED registers are ours in this mode
-        uint8_t message[13];
-        message[0] = 0x10;
-        std::copy(frame.begin(), frame.end(), message + 1);
-        if (write(fd_, message, sizeof(message)) == static_cast<ssize_t>(sizeof(message))) leds_ = frame;
-        lastLedWrite_ = now;
-    }
+        if (animation_ != kAnimationIdle) return;
 
-    ~RackUiInput() override { close(fd_); }
+        // Write only the LEDs that changed, as short runs of neighbours. A
+        // moving bar usually touches one or two.
+        const auto frame = rackUiLevelFrame(fraction, config_.ledBrightness);
+        for (size_t i = 0; i < frame.size();)
+        {
+            if (frame[i] == leds_[i]) { i++; continue; }
+            size_t end = i;
+            while (end < frame.size() && frame[end] != leds_[end]) end++;
+            uint8_t message[13];
+            message[0] = static_cast<uint8_t>(0x10 + i);
+            std::copy(frame.begin() + i, frame.begin() + end, message + 1);
+            const ssize_t length = static_cast<ssize_t>(1 + end - i);
+            if (write(fd_, message, length) == length) std::copy(frame.begin() + i, frame.begin() + end, leds_.begin() + i);
+            lastLedWrite_ = now;
+            i = end;
+        }
+    }
 
     MenuEvents poll() override
     {
@@ -371,13 +424,49 @@ private:
         }
         if (animation_ >= 0 && animation != animation_)
         {
-            FDVE_DEBUG("rackui: LED animation was 0x%02x, expected 0x%02x", animation, animation_);
+            // The module is not in the LED mode it was told. Either the write
+            // was lost, or the module restarted and is back at its defaults.
+            uint8_t resetCause = 0;
+            readRegisters(0x02, &resetCause, 1);
+            FDVE_DEBUG("rackui: LED animation was 0x%02x, expected 0x%02x (last module reset: %s)", animation,
+                       animation_, resetCauseText(resetCause).c_str());
+
+            // If that keeps happening while this driver writes LED levels, the
+            // writes are the likely cause: stop them and let the module run
+            // its own animation.
+            if (animation_ == kAnimationIdle && !ledWritesSuspended_)
+            {
+                if (now - firstMismatch_ > std::chrono::seconds(60)) { firstMismatch_ = now; mismatches_ = 0; }
+                if (++mismatches_ >= 3)
+                {
+                    ledWritesSuspended_ = true;
+                    FDVE_WARN("rackui: the module left LED level mode %d times in a minute (last module reset: %s). "
+                              "LED level display is off until restart; the LEDs follow the knob. "
+                              "A slower I2C bus (100 kHz) may help.",
+                              mismatches_, resetCauseText(resetCause).c_str());
+                    animation_ = -1;
+                    setAnimation(kAnimationFollowing);
+                    return;
+                }
+            }
             const int wanted = animation_;
             animation_ = -1;
             setAnimation(wanted);
         }
     }
 
+    static std::string resetCauseText(uint8_t flags)
+    {
+        std::string text;
+        const char* const names[] = {"power-on", "reset pin", "software", "watchdog", "window watchdog", "option bytes"};
+        for (int bit = 0; bit < 6; bit++)
+            if (flags & (1 << bit)) text += (text.empty() ? "" : "+") + std::string(names[bit]);
+        return text.empty() ? "unknown" : text;
+    }
+
+    // Reads registers. Tries one transaction with a repeated start first
+    // (register pointer, then the data), and two separate transactions if the
+    // bus driver or the module refuses that.
     // One transaction with a repeated start: register pointer, then the data.
     bool readRegisters(uint8_t first, uint8_t* out, size_t count)
     {
@@ -393,7 +482,8 @@ private:
         struct i2c_rdwr_ioctl_data transfer;
         transfer.msgs = messages;
         transfer.nmsgs = 2;
-        return ioctl(fd_, I2C_RDWR, &transfer) == 2;
+        if (ioctl(fd_, I2C_RDWR, &transfer) == 2) return true;
+        return write(fd_, &first, 1) == 1 && read(fd_, out, count) == static_cast<ssize_t>(count);
     }
 
     bool readState(RackUiDecoder::Reading& reading)
@@ -414,6 +504,14 @@ private:
     std::array<uint8_t, 12> leds_{};
     std::chrono::steady_clock::time_point lastLedWrite_{};
     std::chrono::steady_clock::time_point lastCheck_{};
+    std::chrono::steady_clock::time_point firstMismatch_{};
+    int mismatches_ = 0;
+    bool ledWritesSuspended_ = false;
+
+    std::unique_ptr<GpioLine> txLed_;
+    std::unique_ptr<GpioLine> rxLed_;
+    bool txLit_ = false;
+    bool rxLit_ = false;
 };
 
 } // namespace
