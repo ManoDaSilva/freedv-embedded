@@ -88,6 +88,38 @@ std::vector<AlsaCard> listAlsaCards()
     return cards;
 }
 
+std::vector<AlsaDevice> listAlsaDevices(bool capture)
+{
+    std::vector<AlsaDevice> devices;
+    int index = -1;
+    while (snd_card_next(&index) == 0 && index >= 0)
+    {
+        snd_ctl_t* ctl = nullptr;
+        if (snd_ctl_open(&ctl, ("hw:" + std::to_string(index)).c_str(), 0) < 0) continue;
+        snd_ctl_card_info_t* card;
+        snd_ctl_card_info_alloca(&card);
+        if (snd_ctl_card_info(ctl, card) == 0)
+        {
+            const std::string id = snd_ctl_card_info_get_id(card);
+            int device = -1;
+            while (snd_ctl_pcm_next_device(ctl, &device) == 0 && device >= 0)
+            {
+                // Asking for the PCM in one direction fails if it does not exist.
+                snd_pcm_info_t* pcm;
+                snd_pcm_info_alloca(&pcm);
+                snd_pcm_info_set_device(pcm, device);
+                snd_pcm_info_set_subdevice(pcm, 0);
+                snd_pcm_info_set_stream(pcm, capture ? SND_PCM_STREAM_CAPTURE : SND_PCM_STREAM_PLAYBACK);
+                if (snd_ctl_pcm_info(ctl, pcm) < 0) continue;
+                devices.push_back({"plughw:CARD=" + id + ",DEV=" + std::to_string(device),
+                                   device == 0 ? id : id + "," + std::to_string(device)});
+            }
+        }
+        snd_ctl_close(ctl);
+    }
+    return devices;
+}
+
 Mixer::Mixer(const std::string& card, const std::string& playbackControl, const std::string& captureControl)
 {
     if (card.empty()) return;
@@ -164,6 +196,7 @@ void Mixer::setCapturePercent(int percent)
 #else // no ALSA: nothing to control
 
 std::vector<AlsaCard> listAlsaCards() { return {}; }
+std::vector<AlsaDevice> listAlsaDevices(bool) { return {}; }
 Mixer::Mixer(const std::string&, const std::string&, const std::string&) {}
 Mixer::~Mixer() {}
 std::string Mixer::playbackControl() const { return ""; }

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <atomic>
+#include <functional>
 #include <map>
 #include <memory>
 #include <string>
@@ -21,12 +22,25 @@ namespace fdve {
 //
 // Volume is the exception. It acts on the sound card at once, like
 // alsamixer, and is saved when leaving the volume menu, without a restart.
+// How the settings menu looks at the sound hardware. The defaults ask ALSA;
+// tests supply their own.
+struct AudioHardware
+{
+    // Devices that can record (true) or play (false).
+    std::function<std::vector<AlsaDevice>(bool capture)> list;
+    // Tries to open a device. Returns "" when it opens, the reason otherwise.
+    std::function<std::string(const std::string& device, bool capture, int sampleRate)> probe;
+
+    static AudioHardware real();
+};
+
 class SettingsMenu
 {
 public:
-    SettingsMenu(const Config& config, std::string configPath);
+    SettingsMenu(const Config& config, std::string configPath, AudioHardware hardware = AudioHardware::real());
 
     Menu& menu() { return menu_; }
+
     bool restartRequested() const { return restartRequested_.load(); }
 
     // Applies the volumes stored in the config to the sound cards. Called at start-up.
@@ -45,7 +59,9 @@ private:
     MenuItem number(const std::string& label, const std::string& section, const std::string& key, int& field,
                     int min, int max, int step, const std::string& unit);
     MenuItem biasChoice(const std::string& label, const std::string& section, GpioLine::Bias& field);
-    MenuItem deviceChoice(const std::string& label, const std::string& section, const std::string& key, std::string& field);
+    MenuItem deviceChoice(const std::string& label, const std::string& section, const std::string& key,
+                          std::string& field, bool capture);
+    bool changedDevicesOpen(std::string& error) const;
     MenuItem rateChoice(const std::string& label, const std::string& section, int& field);
     MenuItem volume(const std::string& label, const std::string& section, const std::string& key, int& field,
                     Mixer& mixer, bool playback);
@@ -57,6 +73,7 @@ private:
     bool restartNeeded_ = false;
     std::atomic<bool> restartRequested_{false};
 
+    AudioHardware hardware_;
     std::unique_ptr<Mixer> radioMixer_;
     std::unique_ptr<Mixer> headsetMixer_;
     Menu menu_;

@@ -7,6 +7,7 @@
 #include <fstream>
 #include <sstream>
 
+#include "audio/AudioFactory.h"
 #include "ui/TomlPatcher.h"
 #include "util/Log.h"
 
@@ -57,8 +58,31 @@ std::string shortDeviceName(const std::string& device)
 
 } // namespace
 
-SettingsMenu::SettingsMenu(const Config& config, std::string configPath)
-    : saved_(config), edited_(config), configPath_(std::move(configPath)), menu_(MenuItem{})
+AudioHardware AudioHardware::real()
+{
+    AudioHardware hardware;
+    hardware.list = [](bool capture) { return listAlsaDevices(capture); };
+    hardware.probe = [](const std::string& device, bool capture, int sampleRate) -> std::string {
+        try
+        {
+            AudioStreamConfig stream;
+            stream.type = "alsa";
+            stream.device = device;
+            stream.sampleRate = sampleRate;
+            createAudioStream(stream, capture ? StreamDirection::Capture : StreamDirection::Playback);
+            return "";
+        }
+        catch (const std::exception& e)
+        {
+            return e.what();
+        }
+    };
+    return hardware;
+}
+
+SettingsMenu::SettingsMenu(const Config& config, std::string configPath, AudioHardware hardware)
+    : saved_(config), edited_(config), configPath_(std::move(configPath)), hardware_(std::move(hardware)),
+      menu_(MenuItem{})
 {
     if (config.radio.type == "alsa")
         radioMixer_ = std::make_unique<Mixer>(mixerCardForDevice(config.radio.playbackDevice),
@@ -159,15 +183,16 @@ MenuItem SettingsMenu::biasChoice(const std::string& label, const std::string& s
 }
 
 MenuItem SettingsMenu::deviceChoice(const std::string& label, const std::string& section, const std::string& key,
-                                    std::string& field)
+                                    std::string& field, bool capture)
 {
-    // The sound cards present now, plus the configured device if it is not among them.
+    // The devices present now that work in this direction, plus the
+    // configured one if it is not among them.
     std::vector<std::string> devices;
     std::vector<std::string> labels;
-    for (const auto& card : listAlsaCards())
+    for (const auto& entry : hardware_.list(capture))
     {
-        devices.push_back("plughw:CARD=" + card.id + ",DEV=0");
-        labels.push_back(card.id);
+        devices.push_back(entry.device);
+        labels.push_back(entry.label);
     }
     if (std::find(devices.begin(), devices.end(), field) == devices.end())
     {
@@ -175,6 +200,38 @@ MenuItem SettingsMenu::deviceChoice(const std::string& label, const std::string&
         labels.push_back(shortDeviceName(field));
     }
     return choice(label, section, key, field, devices, labels);
+}
+
+// Before saving: a sound device that was changed must open, with its sample
+// rate. Otherwise the program would restart into a config it cannot run.
+bool SettingsMenu::changedDevicesOpen(std::string& error) const
+{
+    struct Use { const char* name; const std::string& now; const std::string& before; bool capture; int rate; bool alsa; };
+    const Use uses[] = {
+        {"Radio in", edited_.radio.captureDevice, saved_.radio.captureDevice, true, edited_.radio.sampleRate, edited_.radio.type == "alsa"},
+        {"Radio out", edited_.radio.playbackDevice, saved_.radio.playbackDevice, false, edited_.radio.sampleRate, edited_.radio.type == "alsa"},
+        {"Mic", edited_.headset.captureDevice, saved_.headset.captureDevice, true, edited_.headset.sampleRate, edited_.headset.type == "alsa"},
+        {"Headphones", edited_.headset.playbackDevice, saved_.headset.playbackDevice, false, edited_.headset.sampleRate, edited_.headset.type == "alsa"},
+    };
+    for (const Use& use : uses)
+    {
+        if (!use.alsa || use.now == use.before) continue;
+        // A device this program has open right now in the same direction
+        // (the two cards being swapped) cannot be opened a second time, and
+        // is known to work.
+        const bool inUseHere = use.capture
+            ? (use.now == saved_.radio.captureDevice || use.now == saved_.headset.captureDevice)
+            : (use.now == saved_.radio.playbackDevice || use.now == saved_.headset.playbackDevice);
+        if (inUseHere) continue;
+
+        const std::string reason = hardware_.probe(use.now, use.capture, use.rate);
+        if (!reason.empty())
+        {
+            error = std::string(use.name) + ": " + reason;
+            return false;
+        }
+    }
+    return true;
 }
 
 MenuItem SettingsMenu::rateChoice(const std::string& label, const std::string& section, int& field)
@@ -287,11 +344,11 @@ MenuItem SettingsMenu::build()
 
     // [audio]
     root.push_back(submenu("Audio", {
-        deviceChoice("Radio in", "audio.radio", "capture_device", c.radio.captureDevice),
-        deviceChoice("Radio out", "audio.radio", "playback_device", c.radio.playbackDevice),
+        deviceChoice("Radio in", "audio.radio", "capture_device", c.radio.captureDevice, true),
+        deviceChoice("Radio out", "audio.radio", "playback_device", c.radio.playbackDevice, false),
         rateChoice("Radio rate", "audio.radio", c.radio.sampleRate),
-        deviceChoice("Mic", "audio.headset", "capture_device", c.headset.captureDevice),
-        deviceChoice("Headphones", "audio.headset", "playback_device", c.headset.playbackDevice),
+        deviceChoice("Mic", "audio.headset", "capture_device", c.headset.captureDevice, true),
+        deviceChoice("Headphones", "audio.headset", "playback_device", c.headset.playbackDevice, false),
         rateChoice("Headset rate", "audio.headset", c.headset.sampleRate),
         number("Period", "audio", "period_ms", c.periodMs, 5, 100, 5, "ms"),
         number("Prebuffer", "audio", "prebuffer_ms", c.prebufferMs, 0, 500, 20, "ms"),
@@ -415,6 +472,8 @@ bool SettingsMenu::save(std::string& error)
         error = e.what();
         return false;
     }
+
+    if (!changedDevicesOpen(error)) return false;
 
     // Write a new file and rename it over the old one, so a power cut cannot
     // leave half a file. If the directory is not writable, write in place.

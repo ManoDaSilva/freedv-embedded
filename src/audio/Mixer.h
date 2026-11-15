@@ -14,6 +14,16 @@ struct AlsaCard
 // Sound cards present right now. Empty when built without ALSA.
 std::vector<AlsaCard> listAlsaCards();
 
+struct AlsaDevice
+{
+    std::string device; // name to open, for example "plughw:CARD=Device,DEV=0"
+    std::string label;  // short name for a small screen
+};
+
+// Devices that can record (capture = true) or play (capture = false). A card
+// that only plays, such as the Pi's HDMI output, is not offered for recording.
+std::vector<AlsaDevice> listAlsaDevices(bool capture);
+
 // "plughw:CARD=Device,DEV=0" -> "hw:CARD=Device", "plughw:1,0" -> "hw:1".
 // Returns "" when the name does not point at one card (for example "default").
 std::string mixerCardForDevice(const std::string& pcmDevice);

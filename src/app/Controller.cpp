@@ -57,6 +57,14 @@ public:
         status_ = status;
     }
 
+    // Shows a message on the display until the knob is pressed.
+    void notify(const std::string& title, const std::string& text)
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        noticeTitle_ = title;
+        noticeText_ = text;
+    }
+
     bool restartRequested() const { return settings_.restartRequested(); }
 
 private:
@@ -70,9 +78,39 @@ private:
 
         while (running_.load())
         {
+            // Nothing in here may end the program: a display or lamp that
+            // stops answering is reported and tried again.
+            try
+            {
+                step(menu, frame, nextRefresh, lastInput);
+                failing_ = false;
+            }
+            catch (const std::exception& e)
+            {
+                if (!failing_) FDVE_WARN("user interface: %s", e.what());
+                failing_ = true;
+            }
+            std::this_thread::sleep_for(milliseconds(10));
+        }
+    }
+
+    void step(Menu& menu, Framebuffer& frame, Clock::time_point& nextRefresh, Clock::time_point& lastInput)
+    {
+        {
             const auto now = Clock::now();
             const MenuEvents events = input_->poll();
             bool redraw = false;
+
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                if (!noticeTitle_.empty())
+                {
+                    menu.showMessage(noticeTitle_, noticeText_);
+                    noticeTitle_.clear();
+                    lastInput = now;
+                    redraw = true;
+                }
+            }
             if (events.any())
                 FDVE_DEBUG("menu input: steps=%d clicks=%d backs=%d (menu %s, on \"%s\")", events.steps, events.clicks,
                            events.backs, menu.active() ? "open" : "closed", menu.selectedLabel().c_str());
@@ -121,7 +159,6 @@ private:
                 else renderStatusScreen(snapshot, frame);
                 display_->show(frame);
             }
-            std::this_thread::sleep_for(milliseconds(10));
         }
     }
 
@@ -132,6 +169,9 @@ private:
     int timeoutS_;
     std::mutex mutex_;
     ModemStatus status_;
+    std::string noticeTitle_;
+    std::string noticeText_;
+    bool failing_ = false;
     std::atomic<bool> running_{true};
     std::thread thread_;
 };
@@ -146,10 +186,34 @@ RunResult runController(const Config& config, const std::string& configPath, con
     auto modeSwitch = createModeSwitch(config.modeSwitch, config.startAnalog);
     UiThread ui(config, configPath);
 
-    auto radioIn = createAudioStream(streamConfig(config.radio, config.radio.captureDevice, config.periodMs), StreamDirection::Capture);
-    auto radioOut = createAudioStream(streamConfig(config.radio, config.radio.playbackDevice, config.periodMs), StreamDirection::Playback);
-    auto micIn = createAudioStream(streamConfig(config.headset, config.headset.captureDevice, config.periodMs), StreamDirection::Capture);
-    auto speakerOut = createAudioStream(streamConfig(config.headset, config.headset.playbackDevice, config.periodMs), StreamDirection::Playback);
+    // Sound devices. With a settings menu available, a device that does not
+    // open must not end the program: the operator could then never pick
+    // another one from the menu. Run that direction on silence, say so on the
+    // display, and carry on. Without a menu, failing at once is more useful.
+    std::string audioProblems;
+    auto openStream = [&](const SoundCardConfig& card, const std::string& device, StreamDirection direction,
+                          const char* name) -> std::unique_ptr<IAudioStream> {
+        try
+        {
+            return createAudioStream(streamConfig(card, device, config.periodMs), direction);
+        }
+        catch (const std::exception& e)
+        {
+            if (config.menu.type == "none") throw;
+            FDVE_ERROR("%s: %s. Running without it; choose another device in the menu.", name, e.what());
+            audioProblems += std::string(audioProblems.empty() ? "" : ", ") + name;
+            AudioStreamConfig silent;
+            silent.type = "null";
+            silent.sampleRate = card.sampleRate;
+            return createAudioStream(silent, direction);
+        }
+    };
+    auto radioIn = openStream(config.radio, config.radio.captureDevice, StreamDirection::Capture, "Radio in");
+    auto radioOut = openStream(config.radio, config.radio.playbackDevice, StreamDirection::Playback, "Radio out");
+    auto micIn = openStream(config.headset, config.headset.captureDevice, StreamDirection::Capture, "Mic");
+    auto speakerOut = openStream(config.headset, config.headset.playbackDevice, StreamDirection::Playback, "Headphones");
+    if (!audioProblems.empty())
+        ui.notify("Audio error", "Cannot open: " + audioProblems + ". Pick a device under Audio.");
 
     Modem::Params params;
     params.mode = config.mode;

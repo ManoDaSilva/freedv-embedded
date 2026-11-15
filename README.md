@@ -417,7 +417,9 @@ position, press on a blank to finish.
 | Controls | `[menu]` | Knob direction, LED mode and brightness, long press time, menu timeout |
 | Log | `[log]` | Level |
 
-The audio device lists show the sound cards present at that moment.
+The audio device lists show the sound devices present at that moment, and only
+those that work in that direction. A card that can only play is not offered as
+a microphone or radio input.
 
 Three settings are not in the menu on purpose: the display type, the display's
 I2C address, and the knob's type and wiring. A wrong value there would switch
@@ -434,10 +436,18 @@ only happens while receiving.
 - Before the file is replaced, the new text is checked the same way as at
   start-up. A combination the program would refuse, such as a GPIO type
   without a line number, is not saved, and the screen shows the reason.
+- A sound device that was changed must open before the change is saved. If it
+  does not, the screen shows the reason and nothing is written.
 - The file is replaced in one step, so a power cut cannot leave half a file.
 - "Discard changes" drops everything that is not saved yet.
 
 The user running the program needs write access to the config file.
+
+If a sound device cannot be opened at start-up, for example because it was
+unplugged, the program keeps running when a menu is configured. That direction
+runs on silence, the display shows which device failed, and another one can be
+chosen under "Audio". Without a menu (`menu.type = "none"`) the program stops
+with the error, as before.
 
 ### Volume
 

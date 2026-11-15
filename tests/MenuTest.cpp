@@ -436,6 +436,78 @@ static void testSettings()
     menu2.handle(click());
     CHECK(!second.restartRequested() && readFile(path) == saved);
 
+    // Sound devices: the list depends on the direction, and a newly chosen
+    // device must open before the change is saved.
+    AudioHardware fake;
+    fake.list = [](bool capture) {
+        std::vector<AlsaDevice> devices = {{"plughw:CARD=Device,DEV=0", "Device"}, {"plughw:CARD=Other,DEV=0", "Other"}};
+        if (!capture) devices.push_back({"plughw:CARD=vc4hdmi0,DEV=0", "vc4hdmi0"}); // plays only
+        return devices;
+    };
+    std::string probed;
+    std::string probeAnswer = "cannot open ALSA device: busy";
+    fake.probe = [&](const std::string& device, bool capture, int rate) {
+        probed = device + (capture ? " capture " : " playback ") + std::to_string(rate);
+        return probeAnswer;
+    };
+    // The test file runs on null audio; devices only matter for ALSA cards.
+    auto withAlsa = [&] {
+        Config config = loadConfig(path);
+        config.radio.type = config.headset.type = "alsa";
+        return config;
+    };
+    SettingsMenu third(withAlsa(), path, fake);
+    Menu& menu3 = third.menu();
+    auto pickDevice = [&](const char* item, int position) {
+        menu3.open();
+        CHECK(select(menu3, "Audio"));
+        menu3.handle(click());
+        CHECK(select(menu3, item));
+        menu3.handle(click());
+        menu3.handle(turn(-10));
+        menu3.handle(turn(position));
+        menu3.handle(click());
+        menu3.handle(longPress());
+    };
+    auto saveNow = [&] {
+        CHECK(select(menu3, "Save & restart"));
+        menu3.handle(click());
+    };
+
+    // The playback-only card is offered for "Radio out" (third entry) but
+    // not for "Radio in", where the list ends after two.
+    pickDevice("Radio in", 2);
+    saveNow();
+    CHECK(probed == "plughw:CARD=Other,DEV=0 capture 44100"); // second entry: the list had only two
+    snapshot(menu3, "menu_8_device_refused");
+    CHECK(!third.restartRequested() && readFile(path) == saved); // did not open: nothing saved
+    menu3.handle(click());
+
+    // Once it opens, the same change is saved.
+    probeAnswer = "";
+    saveNow();
+    CHECK(third.restartRequested());
+    CHECK(loadConfig(path).radio.captureDevice == "plughw:CARD=Other,DEV=0");
+
+    // Swapping to a device this program already has open is not probed: it
+    // could not be opened twice, and it is known to work.
+    SettingsMenu fourth(withAlsa(), path, fake);
+    Menu& menu4 = fourth.menu();
+    probed.clear();
+    probeAnswer = "must not be asked";
+    menu4.open();
+    CHECK(select(menu4, "Audio"));
+    menu4.handle(click());
+    CHECK(select(menu4, "Mic"));
+    menu4.handle(click());
+    menu4.handle(turn(-10));
+    menu4.handle(turn(1)); // "Other": in use as the radio's capture device
+    menu4.handle(click());
+    menu4.handle(longPress());
+    CHECK(select(menu4, "Save & restart"));
+    menu4.handle(click());
+    CHECK(probed.empty() && fourth.restartRequested());
+
     std::remove(path.c_str());
 }
 
