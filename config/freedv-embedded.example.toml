@@ -3,9 +3,27 @@
 # Check it with: freedv-embedded -c <file> --check-config
 # Unknown keys are errors.
 
+[log]
+level = "info"         # "debug", "info", "warn" or "error"; also applies to the FreeDV backend
+
 [modem]
 mode = "RADEV1"        # only RADEV1 for now
 callsign = ""          # sent at the end of each over; empty = not sent
+start_mode = "digital" # "digital" or "analog": the mode after start-up
+
+# Switches between digital and analog (transparent) mode. In analog mode the
+# modem is bypassed: microphone audio goes straight to the radio while PTT is
+# pressed, radio audio goes straight to the headset otherwise.
+# The mode changes only while receiving.
+[mode_switch]
+type = "none"          # "none", "gpio" or "console" (the "a" key toggles)
+# chip = "/dev/gpiochip0"
+# line = 22
+# active_low = true
+# bias = "pull-up"
+# debounce_ms = 20
+# action = "toggle"    # "toggle": push button, each press changes the mode
+                       # "level": latching switch, active = analog
 
 [audio]
 period_ms = 20         # audio block size
@@ -48,5 +66,13 @@ tx_delay_ms = 0        # wait between keying the radio and starting the modem si
 tx_tail_ms = 150       # keep the radio keyed this long after the last sample is queued
 
 [display]
-type = "console"       # "console" (status line on stderr) or "none"
-refresh_ms = 500
+type = "console"       # "console" (status line on stderr), "ssd1306", "none",
+                       # or several: type = ["ssd1306", "console"]
+refresh_ms = 250
+
+# For "ssd1306": a 128x64 OLED on I2C. Enable I2C with raspi-config and find
+# the address with "i2cdetect -y 1".
+# i2c_device = "/dev/i2c-1"
+# i2c_address = 0x3C
+# rotate = false       # true turns the picture 180 degrees
+# contrast = 207       # 0 to 255

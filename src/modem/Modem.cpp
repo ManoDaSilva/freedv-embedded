@@ -13,6 +13,9 @@
 #include "pipeline_defines.h"
 #include "rade_api.h"
 #include "rade_text.h"
+#include "logging/ulog.h"
+
+#include "util/Log.h"
 
 extern "C"
 {
@@ -81,6 +84,15 @@ Modem::Modem(const Params& params) : impl_(std::make_unique<Impl>())
 {
     impl_->params = params;
     const int flags = radeFlagsForMode(params.mode);
+
+    // The backend has its own logger. Give it the level from the config file.
+    switch (logLevel())
+    {
+        case LogLevel::Debug: ulog_set_level(LOG_DEBUG); break;
+        case LogLevel::Info: ulog_set_level(LOG_INFO); break;
+        case LogLevel::Warn: ulog_set_level(LOG_WARN); break;
+        case LogLevel::Error: ulog_set_level(LOG_ERROR); break;
+    }
 
     rade_initialize();
     char modelFile[1] = {0}; // weights are compiled into librade

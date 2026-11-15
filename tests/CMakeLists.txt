@@ -8,6 +8,14 @@ add_executable(AudioPumpTest AudioPumpTest.cpp)
 target_link_libraries(AudioPumpTest PRIVATE fdve_audio Threads::Threads)
 add_test(NAME audio_pump COMMAND AudioPumpTest)
 
+add_executable(AnalogPathTest AnalogPathTest.cpp)
+target_link_libraries(AnalogPathTest PRIVATE fdve_audio)
+add_test(NAME analog_path COMMAND AnalogPathTest)
+
+add_executable(DisplayTest DisplayTest.cpp)
+target_link_libraries(DisplayTest PRIVATE fdve_display)
+add_test(NAME display COMMAND DisplayTest)
+
 # Transmits through the real modem, feeds the result back into the receiver
 # and checks that it syncs and decodes the callsign. No sound hardware needed.
 add_executable(ModemLoopbackTest ModemLoopbackTest.cpp)

@@ -3,6 +3,7 @@
 #include <initializer_list>
 #include <sstream>
 #include <stdexcept>
+#include <vector>
 
 #define TOML_EXCEPTIONS 1
 #include <toml++/toml.hpp>
@@ -67,6 +68,33 @@ void readSoundCard(const toml::table& audio, const char* name, SoundCardConfig& 
     if (out.type != "alsa" && out.type != "null") fail("'" + path + ".type' must be \"alsa\" or \"null\"");
 }
 
+// Accepts a string or an array of strings.
+std::vector<std::string> readStringList(const toml::table& table, const std::string& path, const char* key,
+                                        std::vector<std::string> defaults)
+{
+    auto node = table.get(key);
+    if (node == nullptr) return defaults;
+    std::vector<std::string> result;
+    if (auto text = node->value_exact<std::string>())
+    {
+        result.push_back(*text);
+    }
+    else if (auto array = node->as_array())
+    {
+        for (auto&& element : *array)
+        {
+            auto item = element.value_exact<std::string>();
+            if (!item) fail("'" + path + "." + key + "' must contain only strings");
+            result.push_back(*item);
+        }
+    }
+    else
+    {
+        fail("'" + path + "." + key + "' must be a string or a list of strings");
+    }
+    return result;
+}
+
 void readGpio(const toml::table& t, const std::string& path, GpioLine::Config& out, bool isInput)
 {
     read(t, path, "chip", out.chip);
@@ -102,13 +130,34 @@ Config parseConfig(std::string_view text)
     for (auto&& [key, value] : root)
     {
         auto k = key.str();
-        if (k != "modem" && k != "audio" && k != "ptt" && k != "display")
+        if (k != "log" && k != "modem" && k != "mode_switch" && k != "audio" && k != "ptt" && k != "display")
             fail("unknown section '" + std::string(k) + "'");
     }
 
-    auto modem = section(root, "", "modem", {"mode", "callsign"});
+    auto log = section(root, "", "log", {"level"});
+    std::string level = "info";
+    read(log, "log", "level", level);
+    if (!parseLogLevel(level.c_str(), config.logLevel))
+        fail("'log.level' must be \"debug\", \"info\", \"warn\" or \"error\"");
+
+    auto modem = section(root, "", "modem", {"mode", "callsign", "start_mode"});
     read(modem, "modem", "mode", config.mode);
     read(modem, "modem", "callsign", config.callsign);
+    std::string startMode = "digital";
+    read(modem, "modem", "start_mode", startMode);
+    if (startMode != "digital" && startMode != "analog")
+        fail("'modem.start_mode' must be \"digital\" or \"analog\"");
+    config.startAnalog = startMode == "analog";
+
+    auto sw = section(root, "", "mode_switch", {"type", "chip", "line", "active_low", "bias", "debounce_ms", "action"});
+    read(sw, "mode_switch", "type", config.modeSwitch.type);
+    if (config.modeSwitch.type != "none" && config.modeSwitch.type != "gpio" && config.modeSwitch.type != "console")
+        fail("'mode_switch.type' must be \"none\", \"gpio\" or \"console\"");
+    readGpio(sw, "mode_switch", config.modeSwitch.gpio, true);
+    if (config.modeSwitch.type == "gpio" && config.modeSwitch.gpio.line < 0) fail("'mode_switch.line' is required");
+    read(sw, "mode_switch", "action", config.modeSwitch.action);
+    if (config.modeSwitch.action != "toggle" && config.modeSwitch.action != "level")
+        fail("'mode_switch.action' must be \"toggle\" or \"level\"");
     if (config.mode != "RADEV1") fail("'modem.mode' must be \"RADEV1\"");
     if (config.callsign.size() > 8) fail("'modem.callsign' is limited to 8 characters");
 
@@ -135,11 +184,19 @@ Config parseConfig(std::string_view text)
     readInt(out, "ptt.output", "tx_delay_ms", config.txDelayMs, 0, 2000);
     readInt(out, "ptt.output", "tx_tail_ms", config.txTailMs, 0, 2000);
 
-    auto display = section(root, "", "display", {"type", "refresh_ms"});
-    read(display, "display", "type", config.display.type);
-    if (config.display.type != "console" && config.display.type != "none")
-        fail("'display.type' must be \"console\" or \"none\"");
+    auto display = section(root, "", "display",
+                           {"type", "refresh_ms", "i2c_device", "i2c_address", "rotate", "contrast"});
+    config.display.types = readStringList(display, "display", "type", config.display.types);
+    for (const auto& type : config.display.types)
+    {
+        if (type != "console" && type != "ssd1306" && type != "none")
+            fail("'display.type' must be \"console\", \"ssd1306\", \"none\" or a list of these");
+    }
     readInt(display, "display", "refresh_ms", config.display.refreshMs, 50, 10000);
+    read(display, "display", "i2c_device", config.display.i2cDevice);
+    readInt(display, "display", "i2c_address", config.display.i2cAddress, 0x03, 0x77);
+    read(display, "display", "rotate", config.display.rotate);
+    readInt(display, "display", "contrast", config.display.contrast, 0, 255);
 
     return config;
 }

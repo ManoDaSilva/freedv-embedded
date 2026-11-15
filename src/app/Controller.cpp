@@ -1,11 +1,13 @@
 #include "app/Controller.h"
 
 #include <chrono>
-#include <cstdio>
+#include <mutex>
 #include <thread>
 
+#include "audio/AnalogPath.h"
 #include "audio/AudioPump.h"
 #include "modem/Modem.h"
+#include "util/Log.h"
 
 namespace fdve {
 
@@ -24,6 +26,51 @@ AudioStreamConfig streamConfig(const SoundCardConfig& card, const std::string& d
     return c;
 }
 
+// Runs the displays on their own thread, so a slow display (an OLED on I2C
+// takes tens of milliseconds per frame) never delays PTT handling.
+class DisplayThread
+{
+public:
+    DisplayThread(std::unique_ptr<IDisplay> display, int refreshMs)
+        : display_(std::move(display)), refreshMs_(refreshMs), thread_(&DisplayThread::run, this) {}
+
+    ~DisplayThread()
+    {
+        running_.store(false);
+        thread_.join();
+    }
+
+    void publish(const ModemStatus& status)
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        status_ = status;
+    }
+
+private:
+    void run()
+    {
+        while (running_.load())
+        {
+            ModemStatus snapshot;
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                snapshot = status_;
+            }
+            display_->update(snapshot);
+            // Sleep in short steps so shutdown stays quick.
+            for (int waited = 0; waited < refreshMs_ && running_.load(); waited += 10)
+                std::this_thread::sleep_for(milliseconds(10));
+        }
+    }
+
+    std::unique_ptr<IDisplay> display_;
+    int refreshMs_;
+    std::mutex mutex_;
+    ModemStatus status_;
+    std::atomic<bool> running_{true};
+    std::thread thread_;
+};
+
 } // namespace
 
 int runController(const Config& config, const std::atomic<bool>& stop)
@@ -31,6 +78,7 @@ int runController(const Config& config, const std::atomic<bool>& stop)
     // Open the hardware first: these fail fast with a clear message.
     auto pttIn = createPttInput(config.pttInput);
     auto pttOut = createPttOutput(config.pttOutput);
+    auto modeSwitch = createModeSwitch(config.modeSwitch, config.startAnalog);
     auto display = createDisplay(config.display);
 
     auto radioIn = createAudioStream(streamConfig(config.radio, config.radio.captureDevice, config.periodMs), StreamDirection::Capture);
@@ -46,25 +94,67 @@ int runController(const Config& config, const std::atomic<bool>& stop)
     Modem modem(params);
     modem.start();
 
+    // Analog mode paths: mic -> radio and radio -> headset, without the modem.
+    AnalogPath analogTx(config.headset.sampleRate, config.radio.sampleRate);
+    AnalogPath analogRx(config.radio.sampleRate, config.headset.sampleRate);
+
+    // Read by the audio threads, written only by this thread.
+    std::atomic<bool> analog{config.startAnalog};
+    std::atomic<bool> micOpen{false};      // state is Transmit
+    std::atomic<bool> transmitting{false}; // state is not Receive
+
     CapturePump radioCapture("radio", std::move(radioIn), config.periodMs,
-        [&](const short* s, int n) { modem.writeRadioIn(s, n); });
+        [&](const short* s, int n) {
+            if (!analog.load()) modem.writeRadioIn(s, n);
+            else if (!transmitting.load()) analogRx.write(s, n);
+        });
     CapturePump micCapture("mic", std::move(micIn), config.periodMs,
-        [&](const short* s, int n) { modem.writeMic(s, n); });
+        [&](const short* s, int n) {
+            if (!analog.load()) modem.writeMic(s, n);
+            else if (micOpen.load()) analogTx.write(s, n);
+        });
+
+    // The playback side picks its source by mode. The unused analog path is
+    // emptied from here (the reading thread), so nothing stale is played
+    // after the next mode change.
     PlaybackPump radioPlayback("radio", std::move(radioOut), config.periodMs, config.prebufferMs,
-        {[&] { return modem.radioOutAvailable(); }, [&](short* s, int n) { return modem.readRadioOut(s, n); }});
+        {[&] {
+             if (analog.load()) return analogTx.available();
+             analogTx.clear();
+             return modem.radioOutAvailable();
+         },
+         [&](short* s, int n) { return analog.load() ? analogTx.read(s, n) : modem.readRadioOut(s, n); }});
     PlaybackPump speakerPlayback("speaker", std::move(speakerOut), config.periodMs, config.prebufferMs,
-        {[&] { return modem.speakerAvailable(); }, [&](short* s, int n) { return modem.readSpeaker(s, n); }});
+        {[&] {
+             if (analog.load() && !transmitting.load()) return analogRx.available();
+             analogRx.clear();
+             return analog.load() ? 0 : modem.speakerAvailable();
+         },
+         [&](short* s, int n) {
+             if (analog.load()) return !transmitting.load() && analogRx.read(s, n);
+             return modem.readSpeaker(s, n);
+         }});
+
+    DisplayThread displayThread(std::move(display), config.display.refreshMs);
 
     ModemState state = ModemState::Receive;
     Clock::time_point endingDeadline;
-    auto nextDisplay = Clock::now();
     int exitCode = 0;
 
-    std::fprintf(stderr, "freedv-embedded running, mode %s\n", config.mode.c_str());
+    FDVE_INFO("freedv-embedded running, mode %s", analog.load() ? "analog" : config.mode.c_str());
 
     while (!stop.load())
     {
         const bool pressed = pttIn->pressed();
+        const bool wantAnalog = modeSwitch->analog();
+
+        // The mode only changes between overs.
+        if (state == ModemState::Receive && wantAnalog != analog.load())
+        {
+            analog.store(wantAnalog);
+            FDVE_INFO("mode: %s", wantAnalog ? "analog" : config.mode.c_str());
+        }
+        const bool isAnalog = analog.load();
 
         switch (state)
         {
@@ -73,49 +163,57 @@ int runController(const Config& config, const std::atomic<bool>& stop)
                 {
                     pttOut->set(true);
                     std::this_thread::sleep_for(milliseconds(config.txDelayMs));
-                    modem.startTx();
+                    if (!isAnalog) modem.startTx();
                     state = ModemState::Transmit;
+                    FDVE_DEBUG("PTT pressed, transmitting");
                 }
                 break;
 
             case ModemState::Transmit:
                 if (!pressed)
                 {
-                    modem.endTx();
+                    if (!isAnalog) modem.endTx();
                     endingDeadline = Clock::now() + milliseconds(3000);
                     state = ModemState::TransmitEnding;
+                    FDVE_DEBUG("PTT released, ending the over");
                 }
                 break;
 
             case ModemState::TransmitEnding:
-                if (modem.txDrained() || Clock::now() > endingDeadline)
+            {
+                const bool drained = isAnalog ? analogTx.available() == 0 : modem.txDrained();
+                if (drained || Clock::now() > endingDeadline)
                 {
+                    if (!drained) FDVE_WARN("transmit audio did not drain in time");
                     // The last samples are now in the sound card's buffer.
                     // Wait for them to be played before unkeying.
                     std::this_thread::sleep_for(milliseconds(config.txTailMs));
-                    modem.finishTx();
+                    if (!isAnalog) modem.finishTx();
                     pttOut->set(false);
                     state = ModemState::Receive;
+                    FDVE_DEBUG("back to receive");
                 }
                 break;
+            }
         }
+        micOpen.store(state == ModemState::Transmit);
+        transmitting.store(state != ModemState::Receive);
 
-        if (Clock::now() >= nextDisplay)
-        {
-            nextDisplay += milliseconds(config.display.refreshMs);
-            ModemStatus status;
-            status.state = state;
-            status.sync = state == ModemState::Receive && modem.sync();
-            status.snrDb = modem.snrDb();
-            status.radioInDbfs = radioCapture.peakDbfs();
-            status.micDbfs = micCapture.peakDbfs();
-            status.rxCallsign = modem.lastRxCallsign();
-            display->update(status);
-        }
+        ModemStatus status;
+        status.state = state;
+        status.analog = isAnalog;
+        status.modeName = config.mode;
+        status.sync = !isAnalog && state == ModemState::Receive && modem.sync();
+        status.snrDb = modem.snrDb();
+        status.radioInDbfs = radioCapture.peakDbfs();
+        status.micDbfs = micCapture.peakDbfs();
+        status.rxCallsign = modem.lastRxCallsign();
+        status.ownCallsign = config.callsign;
+        displayThread.publish(status);
 
         if (radioCapture.failed() || micCapture.failed() || radioPlayback.failed() || speakerPlayback.failed())
         {
-            std::fprintf(stderr, "an audio device failed, exiting\n");
+            FDVE_ERROR("an audio device failed, exiting");
             exitCode = 1;
             break;
         }
@@ -127,8 +225,9 @@ int runController(const Config& config, const std::atomic<bool>& stop)
     modem.finishTx();
     pttOut->set(false);
     return exitCode;
-    // Pumps are destroyed before the modem (reverse declaration order), so no
-    // audio thread touches the modem after it stops.
+    // Destruction runs in reverse declaration order: display thread, then the
+    // pumps, then the analog paths and the modem. No audio thread touches the
+    // modem after it stops.
 }
 
 } // namespace fdve

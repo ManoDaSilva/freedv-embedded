@@ -18,4 +18,12 @@ public:
     virtual void set(bool transmit) = 0;
 };
 
+// Mode switch: selects analog (audio passed straight through) or digital.
+class IModeSwitch
+{
+public:
+    virtual ~IModeSwitch() = default;
+    virtual bool analog() = 0; // polled every few milliseconds
+};
+
 } // namespace fdve

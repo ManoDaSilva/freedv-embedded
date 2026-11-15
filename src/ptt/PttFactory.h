@@ -20,9 +20,20 @@ struct PttOutputConfig
     GpioLine::Config gpio;
 };
 
+struct ModeSwitchConfig
+{
+    std::string type = "none";     // "none", "gpio" or "console"
+    GpioLine::Config gpio;
+    std::string action = "toggle"; // gpio only: "toggle" (push button) or "level" (latching switch)
+};
+
 // Add new PTT sources (CMX108, serial RTS/DTR, ...) and sinks (hamlib,
 // rigctld, CAT, ...) here.
 std::unique_ptr<IPttInput> createPttInput(const PttInputConfig& config);
 std::unique_ptr<IPttOutput> createPttOutput(const PttOutputConfig& config);
+
+// startAnalog is the mode at start-up. A gpio switch with action "level"
+// ignores it: the switch position decides.
+std::unique_ptr<IModeSwitch> createModeSwitch(const ModeSwitchConfig& config, bool startAnalog);
 
 } // namespace fdve

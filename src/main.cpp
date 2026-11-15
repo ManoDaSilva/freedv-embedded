@@ -46,6 +46,7 @@ int main(int argc, char** argv)
     try
     {
         fdve::Config config = fdve::loadConfig(configPath);
+        fdve::setLogLevel(config.logLevel);
         if (checkOnly)
         {
             std::printf("%s: OK\n", configPath.c_str());

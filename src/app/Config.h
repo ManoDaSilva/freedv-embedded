@@ -6,6 +6,7 @@
 #include "audio/AudioFactory.h"
 #include "display/IDisplay.h"
 #include "ptt/PttFactory.h"
+#include "util/Log.h"
 
 namespace fdve {
 
@@ -19,8 +20,12 @@ struct SoundCardConfig
 
 struct Config
 {
+    LogLevel logLevel = LogLevel::Info;
+
     std::string mode = "RADEV1";
     std::string callsign;
+    bool startAnalog = false; // mode at start-up
+    ModeSwitchConfig modeSwitch;
 
     SoundCardConfig radio;
     SoundCardConfig headset;

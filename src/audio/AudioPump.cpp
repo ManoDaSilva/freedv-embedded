@@ -8,6 +8,8 @@
 #include <exception>
 #include <vector>
 
+#include "util/Log.h"
+
 namespace fdve {
 
 namespace {
@@ -53,7 +55,7 @@ void CapturePump::run(std::string name, int blockMs, Sink sink)
     }
     catch (const std::exception& e)
     {
-        std::fprintf(stderr, "audio capture '%s' stopped: %s\n", name.c_str(), e.what());
+        FDVE_ERROR("audio capture '%s' stopped: %s", name.c_str(), e.what());
         failed_.store(true);
     }
 }
@@ -95,7 +97,7 @@ void PlaybackPump::run(std::string name, int blockMs, int prebufferMs, Source so
     }
     catch (const std::exception& e)
     {
-        std::fprintf(stderr, "audio playback '%s' stopped: %s\n", name.c_str(), e.what());
+        FDVE_ERROR("audio playback '%s' stopped: %s", name.c_str(), e.what());
         failed_.store(true);
     }
 }
