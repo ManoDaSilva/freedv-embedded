@@ -205,6 +205,38 @@ static void testSystemInfo()
     for (const char* name : {"/stat", "/meminfo", "/temp"}) std::remove((dir + name).c_str());
 }
 
+static void testVolumeArithmetic()
+{
+    // A coarse control, as on many USB headsets: 38 steps, 0 to 37.
+    const long min = 0, max = 37;
+
+    // Reading a level and writing it back must never move it.
+    for (long v = min; v <= max; v++) CHECK(volumeFromPercent(volumeToPercent(v, min, max), min, max) == v);
+    CHECK(volumeToPercent(0, min, max) == 0 && volumeToPercent(37, min, max) == 100);
+    CHECK(volumeFromPercent(150, min, max) == 37 && volumeFromPercent(-5, min, max) == 0);
+
+    // Every click of the knob moves it, in the direction turned, up to the ends.
+    long v = 20;
+    for (int i = 0; i < 5; i++)
+    {
+        const long next = volumeStepped(v, min, max, +1);
+        CHECK(next == v + 1);
+        v = next;
+    }
+    CHECK(volumeStepped(v, min, max, -1) == v - 1);
+    CHECK(volumeStepped(36, min, max, +3) == 37 && volumeStepped(1, min, max, -3) == 0);
+    int clicksToTop = 0;
+    for (v = 0; v < max; v = volumeStepped(v, min, max, +1)) clicksToTop++;
+    CHECK(clicksToTop == 37);
+
+    // A fine control (0 to 65535): one click is 2 % of the range.
+    CHECK(volumeStepped(0, 0, 65535, 1) == 1311);
+    CHECK(volumeToPercent(volumeStepped(32768, 0, 65535, 5), 0, 65535) == 60);
+    // A control with an offset range, and one with no range at all.
+    CHECK(volumeToPercent(-20, -40, 0) == 50 && volumeFromPercent(50, -40, 0) == -20);
+    CHECK(volumeToPercent(5, 5, 5) == 0 && volumeStepped(5, 5, 5, 3) == 5);
+}
+
 static void testPatcher()
 {
     const std::string text =
@@ -606,6 +638,7 @@ int main(int argc, char** argv)
     testKnob();
     testRackUiDecoder();
     testSystemInfo();
+    testVolumeArithmetic();
     testPatcher();
     testEngine();
     testSettings();

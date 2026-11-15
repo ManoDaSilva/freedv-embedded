@@ -108,8 +108,9 @@ void SettingsMenu::applyStoredVolumes()
 int SettingsMenu::adjustHeadphones(int steps)
 {
     if (!headsetMixer_ || !headsetMixer_->hasPlayback()) return -1;
-    const int percent = std::clamp(headsetMixer_->playbackPercent() + steps * 2, 0, 100);
-    headsetMixer_->setPlaybackPercent(percent);
+    // Stepped in the control's own units: adding 2 % to a rounded percentage
+    // can land on the same step of a coarse control, and then nothing moves.
+    const int percent = headsetMixer_->stepPlayback(steps);
     edited_.headset.playbackVolume = percent;
     set("audio.headset", "playback_volume", std::to_string(percent), false);
     return percent;

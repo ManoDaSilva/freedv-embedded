@@ -8,6 +8,25 @@
 
 namespace fdve {
 
+int volumeToPercent(long value, long min, long max)
+{
+    if (max <= min) return 0;
+    const long span = max - min;
+    return static_cast<int>(((value - min) * 100 + span / 2) / span);
+}
+
+long volumeFromPercent(int percent, long min, long max)
+{
+    percent = std::clamp(percent, 0, 100);
+    return min + ((max - min) * percent + 50) / 100;
+}
+
+long volumeStepped(long value, long min, long max, int detents)
+{
+    const long step = std::max(1L, ((max - min) * 2 + 50) / 100); // 2 %, at least one raw step
+    return std::clamp(value + detents * step, min, max);
+}
+
 std::string mixerCardForDevice(const std::string& pcmDevice)
 {
     const size_t colon = pcmDevice.find(':');
@@ -54,18 +73,6 @@ snd_mixer_elem_t* findControl(snd_mixer_t* mixer, const std::string& wanted, boo
         }
     }
     return best != nullptr ? best : firstUsable;
-}
-
-int toPercent(long value, long min, long max)
-{
-    if (max <= min) return 0;
-    return static_cast<int>((value - min) * 100 / (max - min));
-}
-
-long fromPercent(int percent, long min, long max)
-{
-    percent = std::clamp(percent, 0, 100);
-    return min + (max - min) * percent / 100;
 }
 
 } // namespace
@@ -159,7 +166,7 @@ int Mixer::playbackPercent()
     long min = 0, max = 0, value = 0;
     snd_mixer_selem_get_playback_volume_range(e, &min, &max);
     snd_mixer_selem_get_playback_volume(e, SND_MIXER_SCHN_FRONT_LEFT, &value);
-    return toPercent(value, min, max);
+    return volumeToPercent(value, min, max);
 }
 
 int Mixer::capturePercent()
@@ -170,7 +177,7 @@ int Mixer::capturePercent()
     long min = 0, max = 0, value = 0;
     snd_mixer_selem_get_capture_volume_range(e, &min, &max);
     snd_mixer_selem_get_capture_volume(e, SND_MIXER_SCHN_FRONT_LEFT, &value);
-    return toPercent(value, min, max);
+    return volumeToPercent(value, min, max);
 }
 
 void Mixer::setPlaybackPercent(int percent)
@@ -179,8 +186,22 @@ void Mixer::setPlaybackPercent(int percent)
     auto e = static_cast<snd_mixer_elem_t*>(playback_);
     long min = 0, max = 0;
     snd_mixer_selem_get_playback_volume_range(e, &min, &max);
-    snd_mixer_selem_set_playback_volume_all(e, fromPercent(percent, min, max));
+    snd_mixer_selem_set_playback_volume_all(e, volumeFromPercent(percent, min, max));
     if (percent > 0 && snd_mixer_selem_has_playback_switch(e)) snd_mixer_selem_set_playback_switch_all(e, 1);
+}
+
+int Mixer::stepPlayback(int detents)
+{
+    if (!playback_) return 0;
+    auto e = static_cast<snd_mixer_elem_t*>(playback_);
+    snd_mixer_handle_events(static_cast<snd_mixer_t*>(handle_));
+    long min = 0, max = 0, value = 0;
+    snd_mixer_selem_get_playback_volume_range(e, &min, &max);
+    snd_mixer_selem_get_playback_volume(e, SND_MIXER_SCHN_FRONT_LEFT, &value);
+    const long next = volumeStepped(value, min, max, detents);
+    snd_mixer_selem_set_playback_volume_all(e, next);
+    if (next > min && snd_mixer_selem_has_playback_switch(e)) snd_mixer_selem_set_playback_switch_all(e, 1);
+    return volumeToPercent(next, min, max);
 }
 
 void Mixer::setCapturePercent(int percent)
@@ -189,7 +210,7 @@ void Mixer::setCapturePercent(int percent)
     auto e = static_cast<snd_mixer_elem_t*>(capture_);
     long min = 0, max = 0;
     snd_mixer_selem_get_capture_volume_range(e, &min, &max);
-    snd_mixer_selem_set_capture_volume_all(e, fromPercent(percent, min, max));
+    snd_mixer_selem_set_capture_volume_all(e, volumeFromPercent(percent, min, max));
     if (percent > 0 && snd_mixer_selem_has_capture_switch(e)) snd_mixer_selem_set_capture_switch_all(e, 1);
 }
 
@@ -205,6 +226,7 @@ int Mixer::playbackPercent() { return 0; }
 int Mixer::capturePercent() { return 0; }
 void Mixer::setPlaybackPercent(int) {}
 void Mixer::setCapturePercent(int) {}
+int Mixer::stepPlayback(int) { return 0; }
 
 #endif
 

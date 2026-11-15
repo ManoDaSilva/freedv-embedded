@@ -28,6 +28,14 @@ std::vector<AlsaDevice> listAlsaDevices(bool capture);
 // Returns "" when the name does not point at one card (for example "default").
 std::string mixerCardForDevice(const std::string& pcmDevice);
 
+// The arithmetic behind the volume controls, separate so it can be tested.
+// A control has raw steps from min to max; many USB headsets have only a few
+// dozen. Percentages are rounded to the nearest step in both directions, so
+// reading a level and writing it back never moves it.
+int volumeToPercent(long value, long min, long max);
+long volumeFromPercent(int percent, long min, long max);
+long volumeStepped(long value, long min, long max, int detents);
+
 // Volume controls of one sound card, the same ones alsamixer shows.
 // Percentages are of the control's raw range, like "amixer set X 80%".
 class Mixer
@@ -49,6 +57,11 @@ public:
     int capturePercent();
     void setPlaybackPercent(int percent); // also unmutes when above zero
     void setCapturePercent(int percent);
+
+    // Moves the playback volume by "detents" clicks of a knob and returns the
+    // new level in percent. One click is 2 % of the range, or one step of the
+    // control if its steps are coarser than that, so every click changes it.
+    int stepPlayback(int detents);
 
 private:
     void* handle_ = nullptr;   // snd_mixer_t*

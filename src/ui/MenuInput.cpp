@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <cerrno>
+#include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <stdexcept>
@@ -84,7 +85,9 @@ std::array<uint8_t, 12> rackUiLevelFrame(float fraction, int brightness)
     const float lit = std::clamp(fraction, 0.0f, 1.0f) * kArcLeds;
     for (int i = 0; i < kArcLeds; i++)
     {
-        const float share = std::clamp(lit - static_cast<float>(i), 0.0f, 1.0f);
+        // The LED at the tip is dimmed in quarters. Finer steps would mean a
+        // write to the module for every small flutter of the level.
+        const float share = std::round(std::clamp(lit - static_cast<float>(i), 0.0f, 1.0f) * 4.0f) / 4.0f;
         frame[(kArcStart + i) % 12] = static_cast<uint8_t>(share * static_cast<float>(brightness) + 0.5f);
     }
     return frame;

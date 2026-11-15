@@ -129,7 +129,7 @@ private:
 // Brightness for the module's 12 LEDs (registers 0x10 to 0x1B) showing a level
 // as a bar. It uses the same arc as the module's own gauge animation: nine
 // LEDs starting at LED 8, the other three stay off. The LED at the tip of the
-// bar is dimmed in proportion, so the bar moves smoothly.
+// bar is dimmed in quarter steps.
 std::array<uint8_t, 12> rackUiLevelFrame(float fraction, int brightness);
 
 // Quadrature decoding, shared by encoder drivers and testable on its own.
