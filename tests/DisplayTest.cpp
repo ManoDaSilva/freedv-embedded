@@ -23,10 +23,10 @@ static int litPixels(const Framebuffer& fb, int x, int y, int w, int h)
     return count;
 }
 
-// Number of lit pixels along the middle row of a level bar's inside.
-static int barFill(const Framebuffer& fb, int y)
+// Number of lit pixels along the middle row of the level bar's inside.
+static int barFill(const Framebuffer& fb)
 {
-    return litPixels(fb, 26, y + 3, 100, 1);
+    return litPixels(fb, 26, 40, 100, 1);
 }
 
 int main(int argc, char** argv)
@@ -74,27 +74,34 @@ int main(int argc, char** argv)
     fb.text(0, 0, "I");
     CHECK(litPixels(fb, 0, 0, 6, 8) == 11); // 7 for the stem, 2 + 2 for the serifs
 
-    // Level bars follow the level, and clamp at both ends.
-    CHECK(barFill(fbIdle, 22) == 0);
-    CHECK(barFill(fbRx, 22) == 75);  // -15 dBFS of a -60..0 range, 100 px wide
-    CHECK(barFill(fbTx, 35) == 90);  // -6 dBFS
+    // The bar follows the radio level while receiving, the microphone while
+    // transmitting, and clamps at both ends.
+    CHECK(barFill(fbIdle) == 0);
+    CHECK(barFill(fbRx) == 75);  // AF -15 dBFS of a -60..0 range, 100 px wide
+    CHECK(barFill(fbTx) == 90);  // mic -6 dBFS, not the radio's -40
     ModemStatus hot = idle;
     hot.radioInDbfs = 3;
-    CHECK(barFill(render("hot", hot), 22) == 100);
+    CHECK(barFill(render("hot", hot)) == 100);
 
-    // The TX indicator is an inverted box: mostly lit. RX is plain text.
-    CHECK(litPixels(fbTx, 0, 0, 27, 16) > 27 * 16 / 2);
-    CHECK(litPixels(fbRx, 0, 0, 27, 16) < 27 * 16 / 2);
+    // Transmitting shows an inverted band across the main area: mostly lit.
+    CHECK(litPixels(fbTx, 0, 9, 128, 23) > 128 * 23 / 2);
+    CHECK(litPixels(fbRx, 0, 9, 128, 23) < 128 * 23 / 2);
 
-    // SNR only shows with sync, at the top right.
-    CHECK(litPixels(fbRx, 80, 0, 48, 16) > 0);
-    CHECK(litPixels(fbIdle, 80, 0, 48, 16) == 0);
-    CHECK(litPixels(fbAnalog, 80, 0, 48, 16) == 0);
+    // The SNR is the largest thing on the screen. With sync it shows the
+    // value ("12" lights more pixels than "--"), in analog mode it is absent.
+    const int snrRx = litPixels(fbRx, 40, 10, 64, 21);
+    const int snrIdle = litPixels(fbIdle, 40, 10, 64, 21);
+    CHECK(snrIdle > 0 && snrRx > 2 * snrIdle);
+    CHECK(litPixels(fbAnalog, 0, 17, 18, 7) == 0); // no "SNR" label
+
+    // "SYNC" appears at the top right only with sync.
+    CHECK(litPixels(fbRx, 104, 0, 24, 8) > 0);
+    CHECK(litPixels(fbIdle, 104, 0, 24, 8) == 0);
 
     // Callsign area: heard callsign in RX, own callsign in TX, differ.
-    CHECK(litPixels(fbRx, 0, 49, 128, 14) > 0);
-    CHECK(litPixels(fbTx, 0, 49, 128, 14) > 0);
-    CHECK(litPixels(fbRx, 0, 49, 128, 14) != litPixels(fbTx, 0, 49, 128, 14));
+    CHECK(litPixels(fbRx, 0, 50, 128, 14) > 0);
+    CHECK(litPixels(fbTx, 0, 50, 128, 14) > 0);
+    CHECK(litPixels(fbRx, 0, 50, 128, 14) != litPixels(fbTx, 0, 50, 128, 14));
 
     std::printf(failures == 0 ? "PASS\n" : "FAILED\n");
     return failures == 0 ? 0 : 1;

@@ -8,23 +8,29 @@ namespace fdve {
 namespace {
 
 constexpr float kBarFloorDbfs = -60.0f;
+constexpr int kBarY = 34;
+constexpr int kBarHeight = 12;
 
-// Level bar from -60 to 0 dBFS, with a notch at -10 dBFS as a "getting hot" mark.
-void levelBar(Framebuffer& fb, int y, const char* label, float dbfs)
+// Level bar from -60 to 0 dBFS, with a mark at -10 dBFS.
+void levelBar(Framebuffer& fb, const char* label, float dbfs)
 {
     const int x = 24;
     const int w = Framebuffer::Width - x;
-    const int h = 8;
-    fb.text(0, y, label);
-    fb.rect(x, y, w, h);
+    fb.text(0, kBarY + 2, label);
+    fb.rect(x, kBarY, w, kBarHeight);
 
     const float fraction = std::clamp((dbfs - kBarFloorDbfs) / -kBarFloorDbfs, 0.0f, 1.0f);
     const int inner = w - 4;
-    fb.fillRect(x + 2, y + 2, static_cast<int>(fraction * inner + 0.5f), h - 4);
+    fb.fillRect(x + 2, kBarY + 2, static_cast<int>(fraction * inner + 0.5f), kBarHeight - 4);
 
-    const int notch = x + 2 + static_cast<int>((-10.0f - kBarFloorDbfs) / -kBarFloorDbfs * inner);
-    fb.setPixel(notch, y - 1);
-    fb.setPixel(notch, y + h);
+    const int mark = x + 2 + static_cast<int>((-10.0f - kBarFloorDbfs) / -kBarFloorDbfs * inner);
+    fb.fillRect(mark, kBarY - 2, 1, 2);
+    fb.fillRect(mark, kBarY + kBarHeight, 1, 2);
+}
+
+void centred(Framebuffer& fb, int y, const std::string& text, int scale, bool on = true)
+{
+    fb.text((Framebuffer::Width - Framebuffer::textWidth(text, scale)) / 2, y, text, scale, on);
 }
 
 } // namespace
@@ -34,39 +40,42 @@ void renderStatusScreen(const ModemStatus& s, Framebuffer& fb)
     fb.clear();
     const bool transmitting = s.state != ModemState::Receive;
 
-    // Top band: RX/TX, large. Inverted while transmitting.
-    if (transmitting) fb.fillRect(0, 0, 27, 16);
-    fb.text(2, 1, transmitting ? "TX" : "RX", 2, !transmitting);
+    // Header line, small: mode on the left, sync or over state on the right.
+    fb.text(0, 0, s.analog ? "ANALOG" : s.modeName);
+    std::string flag;
+    if (s.state == ModemState::TransmitEnding) flag = "END";
+    else if (!transmitting && !s.analog && s.sync) flag = "SYNC";
+    fb.text(Framebuffer::Width - Framebuffer::textWidth(flag), 0, flag);
 
-    // Mode and sync, small, next to it.
-    fb.text(32, 0, s.analog ? "ANALOG" : s.modeName);
-    if (!s.analog)
+    // Main area, large. Receiving: the SNR. Transmitting: an inverted TX band.
+    if (transmitting)
     {
-        if (s.state == ModemState::TransmitEnding) fb.text(32, 9, "END");
-        else if (!transmitting && s.sync) fb.text(32, 9, "SYNC");
+        fb.fillRect(0, 9, Framebuffer::Width, 23);
+        centred(fb, 10, "TX", 3, false);
+    }
+    else if (s.analog)
+    {
+        centred(fb, 13, "RX", 2);
+    }
+    else
+    {
+        fb.text(0, 17, "SNR");
+        const std::string value = s.sync ? std::to_string(s.snrDb) : "--";
+        const int right = 104;
+        fb.text(right - Framebuffer::textWidth(value, 3), 10, value, 3);
+        fb.text(right + 4, 24, "dB");
     }
 
-    // SNR, large, right aligned. Only meaningful with sync.
-    if (!s.analog && !transmitting && s.sync)
-    {
-        const std::string snr = std::to_string(s.snrDb) + "dB";
-        fb.text(Framebuffer::Width - Framebuffer::textWidth(snr, 2), 1, snr, 2);
-    }
-
-    levelBar(fb, 22, "AF", s.radioInDbfs);
-    levelBar(fb, 35, "MIC", s.micDbfs);
+    // One level bar: what comes from the radio while receiving, the
+    // microphone while transmitting (the radio input carries nothing then).
+    if (transmitting) levelBar(fb, "MIC", s.micDbfs);
+    else levelBar(fb, "AF", s.radioInDbfs);
 
     // Bottom: callsign, large, centred.
     std::string callsign = transmitting ? s.ownCallsign : s.rxCallsign;
     if (callsign.size() > 10) callsign.resize(10);
-    if (callsign.empty())
-    {
-        if (!s.analog && !transmitting) fb.text(0, 53, "no callsign heard yet");
-    }
-    else
-    {
-        fb.text((Framebuffer::Width - Framebuffer::textWidth(callsign, 2)) / 2, 49, callsign, 2);
-    }
+    if (!callsign.empty()) centred(fb, 50, callsign, 2);
+    else if (!s.analog && !transmitting) fb.text(0, 55, "no callsign heard yet");
 }
 
 } // namespace fdve

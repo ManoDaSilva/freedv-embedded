@@ -187,9 +187,11 @@ i2cdetect -y 1
 
 The user running the program must be in the `i2c` group.
 
-The screen shows RX or TX, the mode, sync and SNR, level bars for the radio
-audio and the microphone (-60 to 0 dBFS, with a mark at -10), and a callsign:
-the last one heard while receiving, your own while transmitting.
+The SNR is the largest element, with the AF level bar from the radio below it
+(-60 to 0 dBFS, with a mark at -10). The top line shows the mode and sync, the
+bottom line the last callsign heard. While transmitting, the SNR is replaced by
+an inverted TX band, the bar shows the microphone level, and the bottom line
+shows your own callsign.
 
 ![Status screen in four situations](docs/status-screen.png)
 
