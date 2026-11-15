@@ -62,6 +62,10 @@ struct MenuInputConfig
     bool reverse = false;        // swap the turning direction
     int longPressMs = 600;       // hold this long for "back"
     int timeoutS = 30;           // leave the menu after this long without input
+
+    // Command for "Shut down" in the menu. Empty uses "systemctl poweroff",
+    // then "sudo -n systemctl poweroff" if that is refused.
+    std::string shutdownCommand;
 };
 
 std::unique_ptr<IMenuInput> createMenuInput(const MenuInputConfig& config);

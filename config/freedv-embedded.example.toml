@@ -123,3 +123,7 @@ type = "none"          # "none", "gpio", "rackui" or "console"
 # reverse = false        # swap the turning direction
 # long_press_ms = 600
 # timeout_s = 30         # leave the menu after this long without input
+
+# What "Shut down" in the menu runs. Leave it out for the default:
+# "systemctl poweroff", and "sudo -n systemctl poweroff" if that is refused.
+# shutdown_command = "sudo -n systemctl poweroff"

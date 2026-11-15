@@ -13,7 +13,7 @@ namespace fdve {
 // class below walks it. Nothing here knows about the settings themselves.
 struct MenuItem
 {
-    enum class Kind { Submenu, Choice, Number, Text, Action };
+    enum class Kind { Submenu, Choice, Number, Text, Action, Info };
 
     Kind kind = Kind::Action;
     std::string label;
@@ -21,8 +21,10 @@ struct MenuItem
     // Submenu
     std::vector<MenuItem> children;
     std::function<void()> onLeave; // called when the operator leaves this submenu
+    bool startOnBack = false;      // open with the back entry highlighted (confirmation menus)
 
-    // Choice and Text: the value as text
+    // Choice, Text and Info: the value as text. Info rows only show it; it
+    // is read again at every redraw, so it can change while on screen.
     std::function<std::string()> get;
     std::function<void(const std::string&)> set;
     std::vector<std::string> choices;

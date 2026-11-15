@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cerrno>
+#include <chrono>
 #include <cstdio>
 #include <cstring>
 #include <fstream>
@@ -441,6 +442,45 @@ MenuItem SettingsMenu::build()
         discard();
         menu_.showMessage("Discard", hadChanges ? "Changes dropped." : "Nothing was changed.");
     }));
+
+    // System: readings about the Pi, and a clean shutdown.
+    {
+        auto info = [](const std::string& label, std::function<std::string()> read) {
+            MenuItem item;
+            item.kind = MenuItem::Kind::Info;
+            item.label = label;
+            item.get = std::move(read);
+            return item;
+        };
+        // The CPU figure is the load since the previous reading. Take one
+        // per second at most, however often the screen is redrawn.
+        auto cpu = [this, last = std::string("..."), when = std::chrono::steady_clock::time_point()]() mutable {
+            const auto now = std::chrono::steady_clock::now();
+            if (now - when >= std::chrono::seconds(1))
+            {
+                last = system_.cpuLoad();
+                when = now;
+            }
+            return last;
+        };
+        root.push_back(submenu("System", {
+            info("IP", [this] { return system_.ipAddress(); }),
+            info("CPU", cpu),
+            info("RAM", [this] { return system_.memory(); }),
+            info("Temp", [this] { return system_.temperature(); }),
+        }));
+
+        // Confirmation: the first press only opens this submenu, with "back"
+        // highlighted. Shutting down takes a turn and a second press.
+        MenuItem confirm = submenu("Shut down", {
+            actionItem("Yes, shut down", [this] {
+                menu_.showMessage("Shutting down", "Wait for the Pi's green light to stop before removing power.");
+                shutdownRequested_.store(true);
+            }),
+        });
+        confirm.startOnBack = true;
+        root.push_back(std::move(confirm));
+    }
 
     return submenu("Settings", std::move(root));
 }

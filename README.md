@@ -29,6 +29,7 @@ headset and adds RADE V1 to a radio that does not have it.
   - [Controls](#controls)
   - [What is in the menu](#what-is-in-the-menu)
   - [Saving](#saving)
+  - [System and shut down](#system-and-shut-down)
   - [Volume](#volume)
 - [Logging](#logging)
 - [Project layout](#project-layout)
@@ -416,6 +417,8 @@ position, press on a blank to finish.
 | Display | `[display]` | Refresh, contrast, rotation, console status line |
 | Controls | `[menu]` | Knob direction, LED mode and brightness, long press time, menu timeout |
 | Log | `[log]` | Level |
+| System | | Read-only: IP address, CPU load, memory in use, CPU temperature |
+| Shut down | | Powers the Pi off cleanly, after a confirmation |
 
 The audio device lists show the sound devices present at that moment, and only
 those that work in that direction. A card that can only play is not offered as
@@ -448,6 +451,43 @@ unplugged, the program keeps running when a menu is configured. That direction
 runs on silence, the display shows which device failed, and another one can be
 chosen under "Audio". Without a menu (`menu.type = "none"`) the program stops
 with the error, as before.
+
+### System and shut down
+
+"System" shows four readings about the Pi. They update while the menu is open.
+
+| Row | Shows |
+|---|---|
+| IP | The first IPv4 address that is not the loopback address |
+| CPU | Load across all cores over the last second or so |
+| RAM | Memory in use and total, in MB |
+| Temp | CPU temperature |
+
+"Shut down" powers the Pi off. It opens a confirmation with "back"
+highlighted, so it takes a turn and a second press. The program then finishes
+the current over if there is one, releases PTT, closes the sound devices, and
+runs the shutdown command. Wait until the Pi's green light stops blinking
+before removing power.
+
+The default command is `systemctl poweroff`, then `sudo -n systemctl poweroff`
+if that is refused. Which one works depends on how the program is started:
+
+| Started | Works by default |
+|---|---|
+| As root, or as a systemd service running as root | Yes |
+| From a terminal on Raspberry Pi OS as the first user | Yes, that user has passwordless `sudo` |
+| As a systemd service under another user (`User=freedv` in the example unit) | No. Allow it with the rule below. |
+
+To let a service user power the Pi off, create
+`/etc/sudoers.d/freedv-poweroff` with `sudo visudo -f /etc/sudoers.d/freedv-poweroff`
+and this line (replace `freedv` with the user name):
+
+```
+freedv ALL=(root) NOPASSWD: /usr/bin/systemctl poweroff
+```
+
+`menu.shutdown_command` replaces the command, for example to run a script.
+If the command fails, the program exits with an error and the Pi stays on.
 
 ### Volume
 
@@ -512,6 +552,7 @@ src/
   ui/TomlPatcher.*           changes one value in the config file, keeps the rest
   audio/Mixer.*              sound card volume controls and card list
   util/Log.*                 log levels
+  util/SystemInfo.*          IP address, CPU load, memory, temperature
 tests/
 ```
 

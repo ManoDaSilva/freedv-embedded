@@ -142,7 +142,7 @@ void Menu::click()
             switch (item->kind)
             {
                 case MenuItem::Kind::Submenu:
-                    levels_.push_back({item, item->children.empty() ? 0 : 1});
+                    levels_.push_back({item, item->children.empty() || item->startOnBack ? 0 : 1});
                     break;
                 case MenuItem::Kind::Choice:
                 {
@@ -164,6 +164,8 @@ void Menu::click()
                 case MenuItem::Kind::Action:
                     if (item->action) item->action();
                     break;
+                case MenuItem::Kind::Info:
+                    break; // nothing to edit
             }
             break;
         }
@@ -239,7 +241,8 @@ std::string Menu::valueText(const MenuItem& item)
                 if (item.choices[i] == now) return item.choiceLabels[i];
             return now;
         }
-        case MenuItem::Kind::Text: return item.get ? item.get() : "";
+        case MenuItem::Kind::Text:
+        case MenuItem::Kind::Info: return item.get ? item.get() : "";
         case MenuItem::Kind::Action: return "";
     }
     return "";
@@ -256,7 +259,7 @@ void Menu::renderList(Framebuffer& fb, const std::vector<std::pair<std::string, 
         if (isSelected) fb.fillRect(0, y - 1, Framebuffer::Width, kRowHeight);
 
         std::string value = rows[i].second;
-        if (static_cast<int>(value.size()) > 12) value = value.substr(0, 12);
+        if (static_cast<int>(value.size()) > 15) value = value.substr(0, 15); // an IPv4 address fits
         std::string label = rows[i].first;
         const int room = kCharsPerRow - static_cast<int>(value.size()) - (value.empty() ? 0 : 1);
         if (static_cast<int>(label.size()) > room) label = label.substr(0, std::max(0, room));

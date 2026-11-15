@@ -21,7 +21,9 @@ namespace fdve {
 //
 // A settings menu on the display can change the config file. Saving there ends
 // the run with Restart, and the caller starts over with the new file.
-enum class RunResult { Stopped, Failed, Restart };
+// "Shut down" in the menu ends the run with Shutdown; the caller then powers
+// the computer off.
+enum class RunResult { Stopped, Failed, Restart, Shutdown };
 
 RunResult runController(const Config& config, const std::string& configPath, const std::atomic<bool>& stop);
 

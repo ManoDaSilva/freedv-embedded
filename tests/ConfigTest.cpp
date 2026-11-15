@@ -120,6 +120,8 @@ int main()
     auto lamps = fdve::parseConfig(q("[menu]\ntype = \"rackui\"\ntx_led_line = -1\nrx_led_line = 17\nleds = \"follow\"\n"));
     CHECK(lamps.menu.txLedLine == -1 && lamps.menu.rxLedLine == 17 && lamps.menu.leds == "follow");
     CHECK(rejects(q("[menu]\nleds = \"blink\"\n").c_str(), "menu.leds"));
+    CHECK(example.menu.shutdownCommand.empty());
+    CHECK(fdve::parseConfig(q("[menu]\nshutdown_command = \"sudo -n poweroff\"\n")).menu.shutdownCommand == "sudo -n poweroff");
     CHECK(rejects(q("[menu]\ntype = \"gpio\"\nline_a = 5\n").c_str(), "are required"));
     CHECK(rejects(q("[menu]\ntype = \"knob\"\n").c_str(), "menu.type"));
     CHECK(rejects(q("[menu]\nsteps_per_detent = 3\n").c_str(), "1, 2 or 4"));

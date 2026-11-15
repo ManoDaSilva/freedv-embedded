@@ -207,7 +207,7 @@ Config parseConfig(std::string_view text)
     auto menu = section(root, "", "menu",
                         {"type", "chip", "line_a", "line_b", "line_button", "active_low", "bias", "steps_per_detent",
                          "i2c_device", "i2c_address", "leds", "led_brightness", "tx_led_line",
-                         "rx_led_line", "state_leds_active_low", "reverse", "long_press_ms", "timeout_s"});
+                         "rx_led_line", "state_leds_active_low", "shutdown_command", "reverse", "long_press_ms", "timeout_s"});
     read(menu, "menu", "type", config.menu.type);
     if (config.menu.type != "none" && config.menu.type != "gpio" && config.menu.type != "rackui" &&
         config.menu.type != "console")
@@ -233,6 +233,7 @@ Config parseConfig(std::string_view text)
     readInt(menu, "menu", "tx_led_line", config.menu.txLedLine, -1, 1023);
     readInt(menu, "menu", "rx_led_line", config.menu.rxLedLine, -1, 1023);
     read(menu, "menu", "state_leds_active_low", config.menu.stateLedsActiveLow);
+    read(menu, "menu", "shutdown_command", config.menu.shutdownCommand);
     read(menu, "menu", "reverse", config.menu.reverse);
     readInt(menu, "menu", "long_press_ms", config.menu.longPressMs, 200, 5000);
     readInt(menu, "menu", "timeout_s", config.menu.timeoutS, 5, 3600);

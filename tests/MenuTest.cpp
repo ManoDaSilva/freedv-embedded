@@ -168,6 +168,40 @@ static void testRackUiDecoder()
     CHECK(rackUiLevelFrame(-1.0f, 32) == none);
 }
 
+static void testSystemInfo()
+{
+    // Fixed input files, so the formatting can be checked exactly.
+    const std::string dir = TEST_TMP_DIR;
+    SystemInfo info;
+    info.statPath = dir + "/stat";
+    info.meminfoPath = dir + "/meminfo";
+    info.temperaturePath = dir + "/temp";
+
+    std::ofstream(info.meminfoPath) << "MemTotal:        3884000 kB\nMemFree:          100000 kB\n"
+                                       "MemAvailable:    3372000 kB\nBuffers:           50000 kB\n";
+    CHECK(info.memory() == "500/3792 MB");
+    std::ofstream(info.temperaturePath) << "48312\n";
+    CHECK(info.temperature() == "48.3 C");
+
+    // CPU: busy share between two readings. 600 of 1000 ticks were idle or waiting.
+    std::ofstream(info.statPath) << "cpu  1000 0 500 8000 100 0 0 0 0 0\ncpu0 1 2 3 4 5 6 7 8 9 10\n";
+    CHECK(info.cpuLoad() == "...");
+    std::ofstream(info.statPath) << "cpu  1300 0 600 8550 150 0 0 0 0 0\n";
+    CHECK(info.cpuLoad() == "40 %");
+    CHECK(info.cpuLoad() == "..."); // no new ticks yet: no division by zero
+
+    // Missing files are reported, not fatal.
+    info.meminfoPath = info.temperaturePath = info.statPath = dir + "/does-not-exist";
+    CHECK(info.memory() == "n/a" && info.temperature() == "n/a" && info.cpuLoad() == "n/a");
+
+    // The real system: an address or "none", at most 15 characters.
+    const std::string ip = SystemInfo().ipAddress();
+    CHECK(!ip.empty() && ip.size() <= 15);
+    CHECK(SystemInfo().memory().find(" MB") != std::string::npos);
+
+    for (const char* name : {"/stat", "/meminfo", "/temp"}) std::remove((dir + name).c_str());
+}
+
 static void testPatcher()
 {
     const std::string text =
@@ -352,8 +386,34 @@ static void testSettings()
 
     // Every section of the file has a submenu, plus volume.
     for (const char* label : {"Volume", "Modem", "Mode switch", "Audio", "PTT", "Display", "Controls", "Log",
-                              "Save & restart", "Discard changes"})
+                              "Save & restart", "Discard changes", "System", "Shut down"})
         CHECK(select(menu, label));
+
+    // System info: four read-only rows. Pressing one does nothing.
+    CHECK(select(menu, "System"));
+    menu.handle(click());
+    for (const char* label : {"IP", "CPU", "RAM", "Temp"}) CHECK(select(menu, label));
+    snapshot(menu, "menu_9_system");
+    menu.handle(click());
+    CHECK(!menu.editing() && menu.selectedLabel() == "Temp");
+    menu.handle(longPress());
+
+    // Shut down: opens on "back", so two presses in a row do nothing.
+    CHECK(select(menu, "Shut down"));
+    menu.handle(click());
+    snapshot(menu, "menu_10_shutdown");
+    CHECK(menu.selectedLabel().empty());
+    menu.handle(click());
+    CHECK(!settings.shutdownRequested() && menu.selectedLabel() == "Shut down");
+    // Turning to "Yes" and pressing asks for the shutdown. The test only
+    // checks the request; nothing here powers anything off.
+    menu.handle(click());
+    menu.handle(turn(1));
+    CHECK(menu.selectedLabel() == "Yes, shut down" && !settings.shutdownRequested());
+    menu.handle(click());
+    CHECK(settings.shutdownRequested());
+    menu.handle(click());      // dismiss the message
+    menu.handle(longPress());  // leave the confirmation menu
 
     // Nothing changed yet: saving says so and does not ask for a restart.
     CHECK(select(menu, "Save & restart"));
@@ -516,6 +576,7 @@ int main(int argc, char** argv)
     if (argc > 1) outDir = argv[1];
     testKnob();
     testRackUiDecoder();
+    testSystemInfo();
     testPatcher();
     testEngine();
     testSettings();

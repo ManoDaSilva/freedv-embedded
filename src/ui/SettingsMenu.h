@@ -10,6 +10,7 @@
 #include "app/Config.h"
 #include "audio/Mixer.h"
 #include "ui/Menu.h"
+#include "util/SystemInfo.h"
 
 namespace fdve {
 
@@ -42,6 +43,7 @@ public:
     Menu& menu() { return menu_; }
 
     bool restartRequested() const { return restartRequested_.load(); }
+    bool shutdownRequested() const { return shutdownRequested_.load(); }
 
     // Applies the volumes stored in the config to the sound cards. Called at start-up.
     void applyStoredVolumes();
@@ -72,6 +74,8 @@ private:
     std::map<std::pair<std::string, std::string>, std::string> pending_; // (section, key) -> TOML literal
     bool restartNeeded_ = false;
     std::atomic<bool> restartRequested_{false};
+    std::atomic<bool> shutdownRequested_{false};
+    SystemInfo system_;
 
     AudioHardware hardware_;
     std::unique_ptr<Mixer> radioMixer_;

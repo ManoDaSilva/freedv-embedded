@@ -2,8 +2,8 @@
 #   app -> ui -> config, audio, ptt, display   and   app -> modem
 # and only "modem" knows about the FreeDV backend.
 
-# --- log: level-filtered messages, used by everything --------------------------
-add_library(fdve_log STATIC util/Log.cpp)
+# --- log: level-filtered messages and system readings, used by everything --------------------------
+add_library(fdve_log STATIC util/Log.cpp util/SystemInfo.cpp)
 target_include_directories(fdve_log PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
 # --- modem: the only code that touches freedv-backend / RADE -----------------

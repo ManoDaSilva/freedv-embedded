@@ -66,6 +66,7 @@ public:
     }
 
     bool restartRequested() const { return settings_.restartRequested(); }
+    bool shutdownRequested() const { return settings_.shutdownRequested(); }
 
 private:
     void run()
@@ -342,6 +343,14 @@ RunResult runController(const Config& config, const std::string& configPath, con
         {
             FDVE_ERROR("an audio device failed, exiting");
             result = RunResult::Failed;
+            break;
+        }
+
+        // "Shut down" was chosen in the menu. Like a restart, between overs only.
+        if (ui.shutdownRequested() && state == ModemState::Receive)
+        {
+            std::this_thread::sleep_for(milliseconds(1500)); // let the message be read
+            result = RunResult::Shutdown;
             break;
         }
 

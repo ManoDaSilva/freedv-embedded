@@ -3,6 +3,7 @@
 #include <atomic>
 #include <cerrno>
 #include <csignal>
+#include <cstdlib>
 #include <cstdio>
 #include <cstring>
 #include <exception>
@@ -64,6 +65,19 @@ int main(int argc, char** argv)
             case fdve::RunResult::Stopped: return 0;
             case fdve::RunResult::Failed: return 1;
             case fdve::RunResult::Restart: break;
+            case fdve::RunResult::Shutdown:
+            {
+                // Everything is closed and the radio is unkeyed at this point.
+                const std::string command = config.menu.shutdownCommand.empty()
+                    ? "systemctl poweroff || sudo -n systemctl poweroff"
+                    : config.menu.shutdownCommand;
+                FDVE_INFO("shutting the computer down: %s", command.c_str());
+                const int status = std::system(command.c_str());
+                if (status == 0) return 0;
+                std::fprintf(stderr, "freedv-embedded: the shutdown command failed. See the README, "
+                                     "\"Shut down\", for the permission it needs.\n");
+                return 1;
+            }
         }
         // Settings were changed from the menu. Start again from scratch as a
         // fresh process image, so every device is reopened with the new file.
