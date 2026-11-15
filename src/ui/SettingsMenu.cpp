@@ -105,6 +105,25 @@ void SettingsMenu::applyStoredVolumes()
     apply(headsetMixer_.get(), saved_.headset);
 }
 
+int SettingsMenu::adjustHeadphones(int steps)
+{
+    if (!headsetMixer_ || !headsetMixer_->hasPlayback()) return -1;
+    const int percent = std::clamp(headsetMixer_->playbackPercent() + steps * 2, 0, 100);
+    headsetMixer_->setPlaybackPercent(percent);
+    edited_.headset.playbackVolume = percent;
+    set("audio.headset", "playback_volume", std::to_string(percent), false);
+    return percent;
+}
+
+void SettingsMenu::saveVolumeChanges()
+{
+    // Other unsaved settings wait for "Save & restart"; the volume then goes
+    // into the file together with them.
+    if (pending_.empty() || restartNeeded_) return;
+    std::string error;
+    if (!save(error)) FDVE_WARN("settings: volume not saved: %s", error.c_str());
+}
+
 void SettingsMenu::set(const std::string& section, const std::string& key, const std::string& literal, bool needsRestart)
 {
     pending_[{section, key}] = literal;

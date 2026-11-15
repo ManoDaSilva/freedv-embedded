@@ -133,6 +133,23 @@ int main(int argc, char** argv)
     CHECK(litPixels(fbLong, 27, 0, 7, 16) == 0);  // gap between RX and the callsign
     CHECK(litPixels(fbLong, 36, 18, 5, 21) == 0); // gap between the mode name and the SNR
 
+    // Volume screen: the bar follows the level, and it also keeps the row
+    // at the colour change empty.
+    auto volumeFrame = [&](const char* name, int percent) {
+        Framebuffer f;
+        renderVolumeScreen(percent, f);
+        if (!outDir.empty()) std::ofstream(outDir + "/" + name + ".pbm") << f.toPbm();
+        return f;
+    };
+    auto v0 = volumeFrame("v0", 0);
+    auto v64 = volumeFrame("8_volume", 64);
+    auto v100 = volumeFrame("v100", 100);
+    CHECK(litPixels(v0, 2, 52, 124, 1) == 0);
+    CHECK(litPixels(v64, 2, 52, 124, 1) == 79);  // 64 % of the 124 pixels inside the frame
+    CHECK(litPixels(v100, 2, 52, 124, 1) == 124);
+    CHECK(litPixels(volumeFrame("v150", 150), 2, 52, 124, 1) == 124); // clamped
+    for (const auto& f : {v0, v64, v100}) CHECK(litPixels(f, 0, 16, 128, 1) == 0);
+
     std::printf(failures == 0 ? "PASS\n" : "FAILED\n");
     return failures == 0 ? 0 : 1;
 }

@@ -21,6 +21,9 @@ namespace fdve {
 // layout also works on two-colour OLEDs (16 rows yellow, 48 rows blue).
 void renderStatusScreen(const ModemStatus& status, Framebuffer& fb);
 
+// Shown for a moment while the knob changes the headphone volume.
+void renderVolumeScreen(int percent, Framebuffer& fb);
+
 // The level the bar shows, as 0.0 to 1.0 of its length: the radio's audio
 // while receiving, the microphone while transmitting, over -60 to 0 dBFS.
 // Other indicators (LEDs around a knob) use it to show the same thing.

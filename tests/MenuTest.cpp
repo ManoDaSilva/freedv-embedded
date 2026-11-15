@@ -387,6 +387,12 @@ static void testSettings()
     menu.open();
     snapshot(menu, "menu_1_root");
 
+    // The knob's volume control needs a mixer control. This config runs on
+    // null audio, so there is none: it reports that and changes nothing.
+    CHECK(settings.adjustHeadphones(3) == -1);
+    settings.saveVolumeChanges();
+    CHECK(readFile(path) == text);
+
     // Every section of the file has a submenu, plus volume.
     for (const char* label : {"Volume", "Modem", "Mode switch", "Audio", "PTT", "Display", "Controls", "Log",
                               "Save & restart", "Discard changes", "System", "Shut down"})

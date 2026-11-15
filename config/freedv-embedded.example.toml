@@ -87,7 +87,7 @@ refresh_ms = 250
 
 # The knob: a rotary encoder with a push button.
 # On the status screen: a long press opens the settings menu, a short press
-# switches between digital and analog.
+# switches between digital and analog, and turning sets the headphone volume.
 # In the menu: turn to move, press to select, long press to go back.
 [menu]
 type = "none"          # "none", "gpio", "rackui" or "console"

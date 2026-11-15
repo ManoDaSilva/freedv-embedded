@@ -48,6 +48,22 @@ void centred(Framebuffer& fb, int y, const std::string& text, int scale, bool on
 
 } // namespace
 
+void renderVolumeScreen(int percent, Framebuffer& fb)
+{
+    fb.clear();
+    percent = std::clamp(percent, 0, 100);
+    fb.text(0, 1, "Volume", 2); // header strip
+
+    const std::string value = std::to_string(percent);
+    const int width = Framebuffer::textWidth(value, 3);
+    const int x = (Framebuffer::Width - width - 10) / 2;
+    fb.text(x, kBodyTop + 1, value, 3);
+    fb.text(x + width + 4, kBodyTop + 15, "%");
+
+    fb.rect(0, kBarY, Framebuffer::Width, kBarHeight);
+    fb.fillRect(2, kBarY + 2, percent * (Framebuffer::Width - 4) / 100, kBarHeight - 4);
+}
+
 float statusLevelFraction(const ModemStatus& s)
 {
     return levelFraction(s.state != ModemState::Receive ? s.micDbfs : s.radioInDbfs);

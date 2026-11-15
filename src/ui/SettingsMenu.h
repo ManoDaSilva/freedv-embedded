@@ -49,6 +49,13 @@ public:
     // Applies the volumes stored in the config to the sound cards. Called at start-up.
     void applyStoredVolumes();
 
+    // Headphone volume from the knob on the status screen: changes it by
+    // "steps" detents and returns the new level in percent, or -1 when the
+    // headset card has no playback volume control. The change acts at once;
+    // saveVolumeChanges() writes it to the config file.
+    int adjustHeadphones(int steps);
+    void saveVolumeChanges();
+
 private:
     MenuItem build();
     void set(const std::string& section, const std::string& key, const std::string& literal, bool needsRestart = true);

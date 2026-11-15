@@ -138,12 +138,41 @@ private:
                 lastInput = now;
                 redraw = true;
             }
-            else if (events.clicks > 0)
+            else
             {
                 // A short press on the status screen switches between digital
                 // and analog. The control loop does the switching.
-                modeToggles_.fetch_add(events.clicks);
+                if (events.clicks > 0) modeToggles_.fetch_add(events.clicks);
+
+                // Turning the knob on the status screen sets the headphone
+                // volume. The level is shown for a moment, and written to the
+                // config file once the knob has been still for a while.
+                if (events.steps != 0)
+                {
+                    const int percent = settings_.adjustHeadphones(events.steps);
+                    if (percent >= 0)
+                    {
+                        volumePercent_ = percent;
+                        volumeShownUntil_ = now + milliseconds(1500);
+                        volumeSaveAt_ = now + milliseconds(3000);
+                        volumeUnsaved_ = true;
+                        redraw = true;
+                    }
+                    else if (!volumeWarned_)
+                    {
+                        FDVE_INFO("the knob cannot set the volume: the headset card has no playback volume control");
+                        volumeWarned_ = true;
+                    }
+                }
             }
+            if (volumeUnsaved_ && now >= volumeSaveAt_)
+            {
+                settings_.saveVolumeChanges();
+                volumeUnsaved_ = false;
+            }
+            const bool showVolume = !menu.active() && now < volumeShownUntil_;
+            if (volumeWasShown_ && !showVolume) redraw = true; // back to the status screen at once
+            volumeWasShown_ = showVolume;
 
             ModemStatus snapshot;
             {
@@ -154,6 +183,7 @@ private:
             // Lights around the knob: its position while the menu is open,
             // otherwise the same level as the bar on the status screen.
             if (menu.active()) input_->showKnobPosition();
+            else if (showVolume) input_->showLevel(static_cast<float>(volumePercent_) / 100.0f);
             else input_->showLevel(statusLevelFraction(snapshot));
             input_->showState(snapshot.state != ModemState::Receive, snapshot.sync);
 
@@ -166,6 +196,7 @@ private:
                     display_->update(snapshot);
                 }
                 if (menu.active()) menu.render(frame);
+                else if (showVolume) renderVolumeScreen(volumePercent_, frame);
                 else renderStatusScreen(snapshot, frame);
                 display_->show(frame);
             }
@@ -182,6 +213,12 @@ private:
     std::string noticeTitle_;
     std::string noticeText_;
     bool failing_ = false;
+    int volumePercent_ = 0;
+    Clock::time_point volumeShownUntil_{};
+    Clock::time_point volumeSaveAt_{};
+    bool volumeUnsaved_ = false;
+    bool volumeWasShown_ = false;
+    bool volumeWarned_ = false;
     std::atomic<int> modeToggles_{0};
     std::atomic<bool> running_{true};
     std::thread thread_;

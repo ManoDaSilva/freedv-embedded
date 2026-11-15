@@ -329,9 +329,16 @@ settings in the config file.
 |---|---|---|
 | Status screen | Long press | Opens the menu |
 | Status screen | Short press | Switches between digital and analog |
+| Status screen | Turn | Changes the headphone volume |
 | Menu | Turn | Moves the highlight, or changes the value being edited |
 | Menu | Press | Enters a submenu, starts editing, confirms |
 | Menu | Long press | Goes back, or cancels the edit. At the top level it closes the menu. |
+
+Turning the knob on the status screen changes the headphone volume in steps of
+2 %. The display shows the level for a moment, and the Rack UI LEDs show it as
+a bar. The level is written to the config file three seconds after the last
+turn, so it is kept across restarts. It is the same control as "Headphones" in
+the volume menu.
 
 The short press changes the mode the same way the mode switch does: only while
 receiving, and a press during an over takes effect when the over ends. With a
