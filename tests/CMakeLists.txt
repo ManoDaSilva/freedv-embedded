@@ -8,6 +8,10 @@ add_executable(AudioPumpTest AudioPumpTest.cpp)
 target_link_libraries(AudioPumpTest PRIVATE fdve_audio Threads::Threads)
 add_test(NAME audio_pump COMMAND AudioPumpTest)
 
+add_executable(ReconnectTest ReconnectTest.cpp)
+target_link_libraries(ReconnectTest PRIVATE fdve_audio Threads::Threads)
+add_test(NAME audio_reconnect COMMAND ReconnectTest)
+
 add_executable(AnalogPathTest AnalogPathTest.cpp)
 target_link_libraries(AnalogPathTest PRIVATE fdve_audio)
 add_test(NAME analog_path COMMAND AnalogPathTest)

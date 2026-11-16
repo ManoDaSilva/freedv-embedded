@@ -19,7 +19,8 @@ add_library(fdve_audio STATIC
     audio/AudioFactory.cpp
     audio/AudioPump.cpp
     audio/Mixer.cpp
-    audio/NullStream.cpp)
+    audio/NullStream.cpp
+    audio/ReconnectingStream.cpp)
 target_include_directories(fdve_audio PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(fdve_audio PUBLIC fdve_log PRIVATE samplerate)
 if(FDVE_WITH_ALSA)

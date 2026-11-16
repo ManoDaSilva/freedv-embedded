@@ -777,7 +777,14 @@ If a sound device cannot be opened at start-up, for example because it was
 unplugged, the program keeps running when a menu is configured. That direction
 runs on silence, the display shows which device failed, and another one can be
 chosen under "Audio". Without a menu (`menu.type = "none"`) the program stops
-with the error, as before.
+with the error.
+
+A sound device that disappears while the program runs never stops it. This
+happens when the radio's USB cable is unplugged, which takes its sound card
+and its control connection along. The program carries on with silence in that
+direction, shows "Audio error" on the display, and tries the device again
+every 2 seconds. When the cable is back, audio and radio control resume by
+themselves.
 
 ### System and shut down
 
@@ -993,6 +1000,7 @@ ctest --test-dir build --output-on-failure
 | `analog_path` | Pass-through, resampling 48 kHz to 44.1 kHz, overflow, clear |
 | `display` | Status screen layout: level bar, TX band, SNR, callsign, empty row at the colour change |
 | `rig` | Keying and frequency read-out against Hamlib's dummy radio, a model without CAT PTT, an unreachable radio. Only built when Hamlib is installed. |
+| `audio_reconnect` | A sound device that fails, stays away and comes back: silence at the right pace, reopening, one report per change |
 | `menu` | Encoder decoding, long press, config file patching, menu navigation and editing, saving, refusing a bad change |
 | `modem_loopback` | Speech in, modem signal out, back into the receiver, sync and callsign decode |
 | `daemon_null_audio` | Whole program on null devices for 3 seconds |

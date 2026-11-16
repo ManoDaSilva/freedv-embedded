@@ -6,6 +6,7 @@
 
 #include "audio/AnalogPath.h"
 #include "audio/AudioPump.h"
+#include "audio/ReconnectingStream.h"
 #include "display/StatusScreen.h"
 #include "modem/Modem.h"
 #include "ui/SettingsMenu.h"
@@ -253,34 +254,43 @@ RunResult runController(const Config& config, const std::string& configPath, con
     UiThread ui(config, configPath);
     if (!rigProblem.empty()) ui.notify("Rig error", rigProblem);
 
-    // Sound devices. With a settings menu available, a device that does not
-    // open must not end the program: the operator could then never pick
-    // another one from the menu. Run that direction on silence, say so on the
-    // display, and carry on. Without a menu, failing at once is more useful.
+    // Sound devices. Each one sits behind a stream that survives the device
+    // going away: unplugging the radio's USB cable takes its sound card with
+    // it, and that must not end the program. While a device is missing, its
+    // direction runs on silence and the device is tried again every 2 seconds.
+    //
+    // At start-up the rule is: with a settings menu available, a device that
+    // does not open is treated the same way, so another one can be picked in
+    // the menu. Without a menu, failing at once is more useful.
     std::string audioProblems;
     auto openStream = [&](const SoundCardConfig& card, const std::string& device, StreamDirection direction,
                           const char* name) -> std::unique_ptr<IAudioStream> {
+        const AudioStreamConfig streamSettings = streamConfig(card, device, config.periodMs);
+        auto opener = [streamSettings, direction] { return createAudioStream(streamSettings, direction); };
+        std::unique_ptr<IAudioStream> stream;
         try
         {
-            return createAudioStream(streamConfig(card, device, config.periodMs), direction);
+            stream = opener();
         }
         catch (const std::exception& e)
         {
             if (config.menu.type == "none") throw;
-            FDVE_ERROR("%s: %s. Running without it; choose another device in the menu.", name, e.what());
+            FDVE_ERROR("%s: %s. Running without it; it is tried again every 2 seconds.", name, e.what());
             audioProblems += std::string(audioProblems.empty() ? "" : ", ") + name;
-            AudioStreamConfig silent;
-            silent.type = "null";
-            silent.sampleRate = card.sampleRate;
-            return createAudioStream(silent, direction);
         }
+        const std::string label = name;
+        return std::make_unique<ReconnectingStream>(
+            label, card.sampleRate, opener, std::move(stream),
+            [&ui, label](bool lost, const std::string&) {
+                if (lost) ui.notify("Audio error", label + " is gone. It is tried again every 2 seconds.");
+            });
     };
     auto radioIn = openStream(config.radio, config.radio.captureDevice, StreamDirection::Capture, "Radio in");
     auto radioOut = openStream(config.radio, config.radio.playbackDevice, StreamDirection::Playback, "Radio out");
     auto micIn = openStream(config.headset, config.headset.captureDevice, StreamDirection::Capture, "Mic");
     auto speakerOut = openStream(config.headset, config.headset.playbackDevice, StreamDirection::Playback, "Headphones");
     if (!audioProblems.empty())
-        ui.notify("Audio error", "Cannot open: " + audioProblems + ". Pick a device under Audio." +
+        ui.notify("Audio error", "Cannot open: " + audioProblems + ". Pick a device under Audio, or plug it in." +
                                      (rigProblem.empty() ? "" : " Also: " + rigProblem));
 
     Modem::Params params;
