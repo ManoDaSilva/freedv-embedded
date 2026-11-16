@@ -15,6 +15,18 @@ headset and adds RADE V1 to a radio that does not have it.
 
 - [What it does](#what-it-does)
 - [How it works](#how-it-works)
+- [Getting started](#getting-started)
+  - [What you need](#what-you-need)
+  - [1. Prepare the Pi](#1-prepare-the-pi)
+  - [2. Install](#2-install)
+  - [3. Check the build](#3-check-the-build)
+  - [4. Find the sound cards](#4-find-the-sound-cards)
+  - [5. Write your config](#5-write-your-config)
+  - [6. First run](#6-first-run)
+  - [7. First transmit](#7-first-transmit)
+  - [8. What next](#8-what-next)
+  - [If something goes wrong](#if-something-goes-wrong)
+  - [Words used here](#words-used-here)
 - [Hardware](#hardware)
 - [Build](#build)
 - [Configure and run](#configure-and-run)
@@ -32,11 +44,14 @@ headset and adds RADE V1 to a radio that does not have it.
   - [Saving](#saving)
   - [System and shut down](#system-and-shut-down)
   - [Volume](#volume)
+- [Start at boot](#start-at-boot)
 - [Logging](#logging)
 - [Project layout](#project-layout)
 - [Where the FreeDV code comes from](#where-the-freedv-code-comes-from)
 - [Tests](#tests)
 - [Status and next steps](#status-and-next-steps)
+- [Acknowledgements](#acknowledgements)
+- [License](#license)
 
 ## What it does
 
@@ -68,6 +83,225 @@ In analog mode the two RADE boxes are bypassed.
 Threads at run time: four audio threads (one per stream direction), the
 backend's TX and RX threads, the user interface thread (knob, menu, displays),
 and the control thread, which polls PTT and the mode switch every 5 ms.
+
+## Getting started
+
+This section goes from an empty SD card to a first received signal, one step
+at a time. If you already run Linux on a Pi, the reference sections further
+down are shorter: [build](#build), [configure and run](#configure-and-run).
+
+### What you need
+
+| Item | Notes |
+|---|---|
+| Raspberry Pi 4 | With a power supply and a microSD card of 8 GB or more |
+| A computer | To prepare the SD card and to type commands on the Pi over the network |
+| Network | Wi-Fi or a cable. The Pi downloads about 250 MB during the install. |
+| Radio with a USB socket for audio | For example an Icom IC-705: one USB cable carries the audio and the radio control. A radio without USB audio needs a USB sound card and an audio lead instead. |
+| USB headset, or a USB sound card with a headset | For your own microphone and headphones |
+
+A display and a knob are optional and come later.
+
+### 1. Prepare the Pi
+
+1. Install [Raspberry Pi Imager](https://www.raspberrypi.com/software/) on
+   your computer and put the SD card in.
+2. In the Imager choose your Pi model, then "Raspberry Pi OS (other)", then
+   "Raspberry Pi OS Lite (64-bit)". "Lite" has no desktop, which is all this
+   needs.
+3. When the Imager offers to customise the settings, do so:
+   - a host name, for example `freedv`
+   - a user name and a password
+   - your Wi-Fi name and password, unless you use a cable
+   - under "Services", enable SSH
+4. Write the card, put it in the Pi and power it on. Wait two minutes.
+5. On your computer, open a terminal (on Windows: PowerShell) and connect.
+   Replace `pi` with the user name and `freedv` with the host name you chose:
+
+```bash
+ssh pi@freedv.local
+```
+
+Answer "yes" to the question about the fingerprint and type your password.
+You now have a command line on the Pi. Everything below is typed there.
+
+### 2. Install
+
+Install the programs and libraries the build needs:
+
+```bash
+sudo apt update
+```
+
+```bash
+sudo apt install -y build-essential cmake git autoconf automake libtool wget patch libasound2-dev libsamplerate0-dev libebur128-dev libhamlib-dev libhamlib-utils i2c-tools
+```
+
+Download this project. `--recurse-submodules` matters: it also fetches the
+FreeDV code this project builds on.
+
+```bash
+git clone --recurse-submodules https://github.com/ManoDaSilva/freedv-embedded.git
+```
+
+Build it. This downloads more code and data, and takes about five minutes on
+a Pi 4.
+
+```bash
+cmake -S freedv-embedded -B freedv-embedded/build
+```
+
+```bash
+cmake --build freedv-embedded/build -j4
+```
+
+The last lines should read `[100%] Built target freedv-embedded`.
+
+### 3. Check the build
+
+```bash
+ctest --test-dir freedv-embedded/build --output-on-failure
+```
+
+You should see `100% tests passed`. The `modem_loopback` test runs speech
+through the whole modem, so a pass means the build is sound.
+
+### 4. Find the sound cards
+
+Plug in the radio's USB cable and the headset. List the sound cards:
+
+```bash
+arecord -L | grep plughw
+```
+
+The output has one line per card, like this:
+
+```
+plughw:CARD=CODEC,DEV=0
+plughw:CARD=Headset,DEV=0
+```
+
+`CODEC` is the name Icom radios (and many others) use for their built-in sound
+card. Your headset will have a different name. If you cannot tell which is
+which, unplug one and run the command again: the line that disappears belongs
+to it. Write both lines down.
+
+### 5. Write your config
+
+Copy the example config to your home directory:
+
+```bash
+cp freedv-embedded/config/freedv-embedded.example.toml ~/modem.toml
+```
+
+Open it in the editor:
+
+```bash
+nano ~/modem.toml
+```
+
+Change these things, and leave the rest:
+
+| Where | Change |
+|---|---|
+| `[modem]`, `callsign` | Your callsign, between the quotes |
+| `[audio.radio]`, `capture_device` and `playback_device` | The radio's line from step 4, in both |
+| `[audio.headset]`, `capture_device` and `playback_device` | The headset's line from step 4, in both |
+| `[ptt.input]`, `type` | `"console"`, so the space bar is your PTT for now |
+
+Save with Ctrl+O and Enter, leave with Ctrl+X. Then let the program check the
+file:
+
+```bash
+freedv-embedded/build/src/freedv-embedded -c ~/modem.toml --check-config
+```
+
+It prints `OK`, or the key that is wrong.
+
+### 6. First run
+
+```bash
+freedv-embedded/build/src/freedv-embedded -c ~/modem.toml
+```
+
+A status line appears and updates when something changes:
+
+```
+RX     RADEV1 sync=no  snr=  -- dB  af= -32 dBFS  mic= -45 dBFS  call=-
+```
+
+| Field | Meaning |
+|---|---|
+| `RX` or `TX` | Receiving or transmitting |
+| `sync` | `yes` when a RADE signal is being decoded |
+| `snr` | Signal quality, shown with sync |
+| `af` | Level of the audio coming from the radio. -99 means nothing arrives. |
+| `mic` | Level of your microphone |
+| `call` | The last callsign received |
+
+Tune the radio to a frequency where FreeDV RADE is in use, in USB (LSB below
+10 MHz), with the radio's filter at its widest. With a RADE signal present,
+`sync` turns to `yes` and you hear speech in the headset.
+
+If `af` stays very low with band noise present, raise the level: run
+`alsamixer`, press F6 to pick the radio's card, F4 for the capture controls.
+On an Icom, the radio's own USB audio output level setting matters as well.
+
+Stop the program with Ctrl+C.
+
+### 7. First transmit
+
+Connect a dummy load, or reduce the power and pick a clear frequency.
+
+Start the program, press the space bar once, speak, press space again. The
+status line shows `TX` in between, and `mic` shows your voice level.
+
+How the radio gets keyed depends on `[ptt.output]`:
+
+- With `type = "none"`, the setting in the example, this program does not key
+  the radio. The radio must do it from the audio (VOX).
+- With `type = "rig"`, the program keys the radio over its USB control
+  connection. See [radio control](#radio-control-cat). For an IC-705 the
+  Hamlib model number is 3085.
+
+Have someone listen, or use a second receiver with FreeDV, to confirm your
+signal decodes.
+
+### 8. What next
+
+| To | See |
+|---|---|
+| Key the radio and read its frequency over USB | [Radio control (CAT)](#radio-control-cat) |
+| Use a real PTT button | [PTT](#ptt) |
+| Add a display | [Display](#display) |
+| Add a knob and change settings without a keyboard | [Settings menu](#settings-menu) |
+| Switch to analog (normal SSB) and back | [Analog mode](#analog-mode) |
+| Have it start when the Pi is powered on | [Start at boot](#start-at-boot) |
+
+### If something goes wrong
+
+| You see | Cause and fix |
+|---|---|
+| `external/freedv-backend is empty` during `cmake` | The clone was made without `--recurse-submodules`. Run `git -C freedv-embedded submodule update --init`, then `cmake` again. |
+| The build stops while downloading | The network dropped. Run the `cmake --build` command again. |
+| `cannot open ALSA device` | The device name in the config does not match a card. Run the command from step 4 again and compare, letter for letter. |
+| `af= -99` and it never moves | No audio from the radio. Check the cable, the radio's USB audio output setting, and the capture level in `alsamixer`. |
+| `sync=no` on a signal you know is RADE | The radio is not in USB (or LSB), is off frequency, or the audio level is far too low or too high. |
+| `Permission denied` for `/dev/gpiochip0`, `/dev/i2c-1` or a serial port | Your user is missing a group. Run `sudo usermod -aG gpio,i2c,dialout,audio $USER`, then log out and in again. |
+| `config: unknown key ...` | A typing mistake in the config. The message names the key. |
+
+### Words used here
+
+| Word | Meaning |
+|---|---|
+| RADE | Radio Autoencoder, the FreeDV digital voice mode this program speaks |
+| PTT | Push to talk: the signal that switches the radio to transmit |
+| VOX | The radio keys itself when it hears audio |
+| CAT | Controlling the radio from a computer, here over USB |
+| SNR | Signal to noise ratio, in dB. Higher is better. |
+| ALSA | The sound system of Linux. `alsamixer` and `arecord` belong to it. |
+| GPIO | The Pi's pins for switches and lamps |
+| I2C | The two-wire bus the display and the knob module use |
 
 ## Hardware
 
@@ -137,7 +371,7 @@ Check the file, then run:
 With `type = "null"` for both sound cards and `type = "none"` for PTT input,
 the program runs without any hardware. See `tests/null-audio.toml`.
 
-`systemd/freedv-embedded.service` is a starting point for running it at boot.
+To run it at every power-on, see [start at boot](#start-at-boot).
 
 ## PTT
 
@@ -603,6 +837,56 @@ Master, Speaker, Headphone, PCM, and Mic, Capture). If it picks the wrong one,
 name the right one with `playback_mixer` or `capture_mixer` in the config
 file. `amixer -c <card> scontrols` lists the names.
 
+## Start at boot
+
+To have the modem start when the Pi is powered on, run it as a service. These
+steps use your own user account and the build in your home directory.
+
+One thing first: a service has no keyboard. In your config, `[ptt.input]`,
+`[mode_switch]` and `[menu]` must not use `type = "console"`. Use `gpio`,
+`rackui` or `none`.
+
+Create the service. This command writes the file with your user name filled in:
+
+```bash
+sudo tee /etc/systemd/system/freedv-embedded.service > /dev/null <<UNIT
+[Unit]
+Description=FreeDV embedded modem
+After=sound.target
+
+[Service]
+ExecStart=/home/$USER/freedv-embedded/build/src/freedv-embedded -c /home/$USER/modem.toml
+User=$USER
+Restart=on-failure
+RestartSec=2
+LimitRTPRIO=95
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+```
+
+Enable it and start it now:
+
+```bash
+sudo systemctl enable --now freedv-embedded
+```
+
+Look at what it prints. Leave this view with Ctrl+C:
+
+```bash
+journalctl -u freedv-embedded -f
+```
+
+Stop it, for example to run the program by hand again:
+
+```bash
+sudo systemctl stop freedv-embedded
+```
+
+`systemd/freedv-embedded.service` in this repository is a variant for a
+dedicated user and an installed binary.
+
 ## Logging
 
 `log.level` is `debug`, `info`, `warn` or `error`. It applies to this program
@@ -735,3 +1019,38 @@ Next:
 3. Measure CPU load in RX and TX on the Pi.
 4. Try CAT control with a real radio, then FreeDV Reporter support on top of it.
 5. RADE V2, once the upstream backend supports it.
+
+## Acknowledgements
+
+This project is a thin layer around other people's work. The modem, the
+vocoder and the signal processing are theirs.
+
+| Work | Authors | License |
+|---|---|---|
+| [FreeDV](https://freedv.org) and the [Radio Autoencoder (RADE)](https://github.com/drowe67/radae) | David Rowe and the FreeDV team | BSD 2-Clause |
+| [rade_c](https://github.com/freedv/rade_c), RADE in C | Peter B Marks and the FreeDV team | BSD 2-Clause |
+| [freedv-backend](https://github.com/freedv/freedv-backend), the audio pipeline used here | Mooneer Salem | BSD 2-Clause |
+| [Opus](https://opus-codec.org), with the FARGAN vocoder and LPCNet | Jean-Marc Valin and the Xiph.Org Foundation | BSD 3-Clause |
+| [RNNoise](https://github.com/xiph/rnnoise) | Jean-Marc Valin and the Xiph.Org Foundation | BSD 3-Clause |
+| [Hamlib](https://hamlib.github.io/) | The Hamlib Group | LGPL 2.1 |
+| [toml++](https://github.com/marzer/tomlplusplus) | Mark Gillard | MIT |
+| [Rack UI](https://github.com/Jankyneering/rack-ui), the knob module supported here | Jankyneering | CC BY-SA 4.0 |
+
+None of their code is copied into this repository. It is fetched when the
+project is built, see
+[where the FreeDV code comes from](#where-the-freedv-code-comes-from).
+
+## License
+
+Written by Manoel, ON6RF.
+
+The software in this repository is published under the
+[GNU General Public License, version 3](LICENSE).
+
+The documentation, including this file and the pictures in `docs/`, is
+published under
+[Creative Commons Attribution-ShareAlike 4.0](https://creativecommons.org/licenses/by-sa/4.0/).
+The same applies to hardware designs, should any be added.
+
+The program you build also contains the works listed under
+[acknowledgements](#acknowledgements), each under its own license.

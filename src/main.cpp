@@ -44,7 +44,7 @@ int main(int argc, char** argv)
         std::string arg = argv[i];
         if ((arg == "-c" || arg == "--config") && i + 1 < argc) configPath = argv[++i];
         else if (arg == "--check-config") checkOnly = true;
-        else if (arg == "--version") { std::printf("freedv-embedded %s\n", FDVE_VERSION); return 0; }
+        else if (arg == "--version") { std::printf("freedv-embedded %s, by Manoel - ON6RF\n", FDVE_VERSION); return 0; }
         else { usage(argv[0]); return arg == "-h" || arg == "--help" ? 0 : 2; }
     }
 
@@ -57,6 +57,8 @@ int main(int argc, char** argv)
             std::printf("%s: OK\n", configPath.c_str());
             return 0;
         }
+
+        FDVE_INFO("freedv-embedded %s, by Manoel - ON6RF", FDVE_VERSION);
 
         std::signal(SIGINT, onSignal);
         std::signal(SIGTERM, onSignal);
