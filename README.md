@@ -1012,27 +1012,31 @@ None of the tests need sound cards, GPIO or a display.
 Confirmed on a Raspberry Pi 4 with an Icom IC-705 on USB, a USB headset, an
 SSD1306 display (single colour and two-colour) and a Rack UI module:
 
-- Receive and transmit in RADE V1, keyboard PTT
-- Radio control (CAT) with the IC-705: keying over CAT, and the frequency in
-  the System menu
+- Receive and transmit in RADE V1
 - Analog mode and switching between the modes
-- The status screen, the volume screen and the settings menu
+- PTT from the keyboard and from a button on a GPIO line
+- Radio control (CAT) with the IC-705: keying over CAT, the frequency in the
+  System menu, and setting it up from the menu
+- The status screen, the volume screen, rotation and contrast
+- The settings menu, including saving during an over and refusing settings
+  that cannot work
 - The Rack UI knob, its LED ring, and the TX and RX lamps
 - Volume from the knob and from the menu, kept across restarts
-- Choosing the sound devices from the menu
-- Starting with a sound device missing
-- The System menu's temperature reading
+- Choosing the sound devices from the menu, and sound cards at two different
+  sample rates
+- Starting with a sound device missing, and unplugging the radio while running
+- The System menu: network addresses, CPU load, temperature
+- Starting at boot as a service, and shutting down from the menu
 
 CPU load on the Pi 4, read from the System menu: about 10 % idle, 20 % while
 receiving and 30 % while transmitting.
 
 Not confirmed on hardware yet:
 
-- Radio control: keying with the RTS or DTR line, reconnecting after the
-  radio was unplugged, radios other than the IC-705
-- Shut down from the menu, and starting at boot as a service
-- Everything on GPIO lines: PTT in, PTT out, the mode switch, a rotary encoder
-- Sound cards running at two different sample rates
+- Keying the radio with the RTS or DTR line, and radios other than the IC-705
+- PTT out on a GPIO line
+- The mode switch and a rotary encoder on GPIO lines
+- `cmake --install`, and building on a PC
 - The getting started guide, followed from an empty SD card
 
 These parts are covered by the automated tests as far as that is possible
@@ -1041,7 +1045,7 @@ without hardware.
 Next:
 
 1. FreeDV Reporter support, using the frequency from the radio.
-2. GPIO PTT and mode switch.
+2. The remaining GPIO functions.
 3. RADE V2, once the upstream backend supports it.
 
 ## Acknowledgements
