@@ -51,6 +51,7 @@ headset and adds RADE V1 to a radio that does not have it.
 - [Tests](#tests)
 - [Status and next steps](#status-and-next-steps)
 - [Acknowledgements](#acknowledgements)
+- [Use of AI tools](#use-of-ai-tools)
 - [License](#license)
 
 ## What it does
@@ -1039,6 +1040,21 @@ vocoder and the signal processing are theirs.
 None of their code is copied into this repository. It is fetched when the
 project is built, see
 [where the FreeDV code comes from](#where-the-freedv-code-comes-from).
+
+## Use of AI tools
+
+Most of the code, the tests and this documentation were written with an AI
+coding assistant (Claude Code, by Anthropic), working from my requirements
+and under my direction. The commits made that way are marked with a
+`Co-Authored-By` trailer.
+
+I built the project, ran it on real hardware and reported what failed, and
+the fixes went through the same loop. Not everything has been through that
+yet: [status and next steps](#status-and-next-steps) lists what has been
+confirmed on hardware and what has not.
+
+The FreeDV code this project builds on is not part of that. It is the work
+of its own authors, see [acknowledgements](#acknowledgements).
 
 ## License
 
