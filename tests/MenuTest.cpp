@@ -439,6 +439,7 @@ static void testSettings()
     menu.handle(click());
     for (const char* label : {"eth0", "wlan0", "CPU", "RAM", "Temp"}) CHECK(select(menu, label));
     CHECK(!select(menu, "Network"));
+    CHECK(!select(menu, "Rig")); // no radio control set up: no row
     snapshot(menu, "menu_9_system");
     // Pressing a row does nothing.
     CHECK(select(menu, "Temp"));
@@ -451,6 +452,22 @@ static void testSettings()
     menu.handle(click());
     CHECK(select(menu, "wlan0") && !select(menu, "eth0") && select(menu, "CPU"));
     menu.handle(longPress());
+
+    // With a radio set up, its row shows the frequency, or why there is none.
+    auto rigRow = [&] {
+        Framebuffer fb;
+        menu.handle(click());
+        const bool found = select(menu, "Rig");
+        snapshot(menu, "menu_12_system_rig");
+        menu.handle(longPress());
+        return found;
+    };
+    settings.setRigStatus(true, true, 14236000);
+    CHECK(rigRow());
+    settings.setRigStatus(true, false, 0);
+    CHECK(rigRow());
+    settings.setRigStatus(false, false, 0);
+    CHECK(!rigRow());
 
     // Nothing up: one row says so.
     network.clear();

@@ -49,6 +49,14 @@ public:
     bool shutdownRequested() const { return shutdownRequested_.load(); }
     SystemInfo& system() { return system_; }
 
+    // What the radio's control connection reports, for the System menu.
+    void setRigStatus(bool configured, bool connected, long long frequencyHz)
+    {
+        rigConfigured_ = configured;
+        rigConnected_ = connected;
+        rigFrequencyHz_ = frequencyHz;
+    }
+
     // Applies the volumes stored in the config to the sound cards. Called at start-up.
     void applyStoredVolumes();
 
@@ -87,6 +95,9 @@ private:
     std::atomic<bool> restartRequested_{false};
     std::atomic<bool> shutdownRequested_{false};
     SystemInfo system_;
+    bool rigConfigured_ = false;
+    bool rigConnected_ = false;
+    long long rigFrequencyHz_ = 0;
 
     AudioHardware hardware_;
     std::unique_ptr<Mixer> radioMixer_;

@@ -179,6 +179,7 @@ private:
                 std::lock_guard<std::mutex> lock(mutex_);
                 snapshot = status_;
             }
+            settings_.setRigStatus(snapshot.rigConfigured, snapshot.rigConnected, snapshot.rigFrequencyHz);
 
             // Lights around the knob: its position while the menu is open,
             // otherwise the same level as the bar on the status screen.

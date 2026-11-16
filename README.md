@@ -205,7 +205,7 @@ tx_delay_ms = 50
 | `model` | Hamlib model number. `rigctl -l` lists them. |
 | `device` | Serial port. The names under `/dev/serial/by-id/` stay the same whichever USB socket is used. For a network connection, `host:port`. |
 | `baud` | Must match the radio's setting. Leave out for the model's default. |
-| `ptt` | `cat`: a CAT command keys the radio. `rts` or `dtr`: that line of the serial port keys it. |
+| `ptt` | How the radio is keyed. `cat`: a CAT command. `rts` or `dtr`: that hardware line of the serial port. |
 | `civ_address` | Icom only. Leave out for the model's default. |
 | `poll_ms` | How often the frequency is read. 0 turns it off. |
 
@@ -239,7 +239,12 @@ To share the radio with other programs, such as a logger, run Hamlib's
 `rigctld` and connect to it with `model = 2` and `device = "localhost:4532"`.
 
 `[rig]` is also in the settings menu: type, model number, serial port (from a
-list of the ports present), baud rate and PTT method.
+list of the ports present), baud rate and PTT method. The System menu has a
+"Rig" row with the radio's frequency, or "offline" while it does not answer.
+
+Keying with a hardware line of the serial port (RTS or DTR) is done here too:
+set `ptt = "rts"` or `ptt = "dtr"` in `[rig]`, together with
+`ptt.output.type = "rig"`. In the menu it is "PTT via" under "Rig".
 
 ## Analog mode
 
@@ -508,7 +513,7 @@ position, press on a blank to finish.
 | Display | `[display]` | Refresh, contrast, rotation, console status line |
 | Controls | `[menu]` | Knob direction, LED mode and brightness, long press time, menu timeout |
 | Log | `[log]` | Level |
-| System | | Read-only: IP address of each connected network interface, CPU load, memory in use, CPU temperature |
+| System | | Read-only: IP address of each connected network interface, the radio's frequency, CPU load, memory in use, CPU temperature |
 | Shut down | | Powers the Pi off cleanly, after a confirmation |
 
 The audio device lists show the sound devices present at that moment, and only
@@ -552,6 +557,7 @@ plugging in a cable, leave "System" and enter it again.
 | Row | Shows |
 |---|---|
 | `eth0`, `wlan0`, ... | The IPv4 address of that network interface. There is one row per interface that is up and has an address, so wired and Wi-Fi both show when both are connected. With none connected, a single "Network: none" row. |
+| Rig | The radio's frequency, "connected" before the first reading, or "offline". Only with a `[rig]` set up. |
 | CPU | Load across all cores over the last second or so |
 | RAM | Memory in use and total, in MB |
 | Temp | CPU temperature |

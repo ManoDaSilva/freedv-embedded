@@ -320,6 +320,27 @@ MenuItem SettingsMenu::build()
     Config& c = edited_;
     std::vector<MenuItem> root;
 
+    // Serial ports present now, by their stable names where the system
+    // provides them, plus the configured one.
+    auto portChoices = [this](const std::string& current, std::vector<std::string>& ports,
+                              std::vector<std::string>& labels) {
+        auto shorten = [](const std::string& port) {
+            // Show the end of the name: that is where the ports differ.
+            return port.size() > 15 ? port.substr(port.size() - 15) : port;
+        };
+        for (const auto& port : hardware_.serialPorts())
+        {
+            ports.push_back(port);
+            labels.push_back(shorten(port));
+        }
+        if (std::find(ports.begin(), ports.end(), current) == ports.end())
+        {
+            ports.push_back(current);
+            labels.push_back(current.empty() ? "(not set)" : shorten(current));
+        }
+    };
+
+
     // Volume: acts at once, saved when leaving this submenu.
     {
         std::vector<MenuItem> items;
@@ -427,22 +448,9 @@ MenuItem SettingsMenu::build()
             set("rig", "model", std::to_string(number));
         };
 
-        // Serial ports present now, by their stable names where the system
-        // provides them, plus the configured one.
         std::vector<std::string> ports;
         std::vector<std::string> labels;
-        for (const auto& port : hardware_.serialPorts())
-        {
-            ports.push_back(port);
-            // Show the end of the name: that is where the ports differ.
-            labels.push_back(port.size() > 15 ? port.substr(port.size() - 15) : port);
-        }
-        if (std::find(ports.begin(), ports.end(), c.rig.device) == ports.end())
-        {
-            ports.push_back(c.rig.device);
-            labels.push_back(c.rig.device.empty() ? "(default)"
-                             : c.rig.device.size() > 15 ? c.rig.device.substr(c.rig.device.size() - 15) : c.rig.device);
-        }
+        portChoices(c.rig.device, ports, labels);
 
         MenuItem baud;
         baud.kind = MenuItem::Kind::Choice;
@@ -577,6 +585,18 @@ MenuItem SettingsMenu::build()
                 menu.children.push_back(info(name, [this, name] { return system_.addressOf(name); }));
             }
             if (menu.children.empty()) menu.children.push_back(info("Network", [] { return std::string("none"); }));
+            // The radio, when a control connection is set up: its frequency,
+            // or why there is none.
+            if (rigConfigured_)
+            {
+                menu.children.push_back(info("Rig", [this]() -> std::string {
+                    if (!rigConnected_) return "offline";
+                    if (rigFrequencyHz_ <= 0) return "connected";
+                    char text[24];
+                    std::snprintf(text, sizeof(text), "%.4f MHz", static_cast<double>(rigFrequencyHz_) / 1e6);
+                    return text;
+                }));
+            }
             menu.children.push_back(info("CPU", cpu));
             menu.children.push_back(info("RAM", [this] { return system_.memory(); }));
             menu.children.push_back(info("Temp", [this] { return system_.temperature(); }));
