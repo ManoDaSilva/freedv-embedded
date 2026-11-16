@@ -23,6 +23,13 @@ target_compile_definitions(MenuTest PRIVATE
     TEST_TMP_DIR="${CMAKE_CURRENT_BINARY_DIR}")
 add_test(NAME menu COMMAND MenuTest)
 
+if(FDVE_HAVE_HAMLIB)
+    add_executable(RigTest RigTest.cpp)
+    target_link_libraries(RigTest PRIVATE fdve_ptt fdve_rig)
+    add_test(NAME rig COMMAND RigTest)
+    set_tests_properties(rig PROPERTIES TIMEOUT 60)
+endif()
+
 # Transmits through the real modem, feeds the result back into the receiver
 # and checks that it syncs and decodes the callsign. No sound hardware needed.
 add_executable(ModemLoopbackTest ModemLoopbackTest.cpp)

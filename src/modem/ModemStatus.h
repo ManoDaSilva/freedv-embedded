@@ -19,6 +19,9 @@ struct ModemStatus
     float micDbfs = -99.0f;     // microphone level (peak, dBFS)
     std::string rxCallsign;     // last callsign decoded from an end-of-over frame
     std::string ownCallsign;    // from the config file, may be empty
+    bool rigConfigured = false; // a radio control connection is set up
+    bool rigConnected = false;  // ... and the radio answers
+    long long rigFrequencyHz = 0; // from the radio, 0 while unknown
 };
 
 inline const char* toString(ModemState s)

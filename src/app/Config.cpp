@@ -136,7 +136,7 @@ Config parseConfig(std::string_view text)
     for (auto&& [key, value] : root)
     {
         auto k = key.str();
-        if (k != "log" && k != "modem" && k != "mode_switch" && k != "audio" && k != "ptt" && k != "display" && k != "menu")
+        if (k != "log" && k != "modem" && k != "mode_switch" && k != "audio" && k != "ptt" && k != "display" && k != "menu" && k != "rig")
             fail("unknown section '" + std::string(k) + "'");
     }
 
@@ -173,6 +173,20 @@ Config parseConfig(std::string_view text)
     readSoundCard(audio, "radio", config.radio);
     readSoundCard(audio, "headset", config.headset);
 
+    auto rig = section(root, "", "rig", {"type", "model", "device", "baud", "ptt", "civ_address", "poll_ms"});
+    read(rig, "rig", "type", config.rig.type);
+    if (config.rig.type != "none" && config.rig.type != "hamlib") fail("'rig.type' must be \"none\" or \"hamlib\"");
+    readInt(rig, "rig", "model", config.rig.model, 0, 99999);
+    if (config.rig.type == "hamlib" && config.rig.model <= 0)
+        fail("'rig.model' is required (the Hamlib model number, see \"rigctl -l\")");
+    read(rig, "rig", "device", config.rig.device);
+    readInt(rig, "rig", "baud", config.rig.baud, 0, 4000000);
+    read(rig, "rig", "ptt", config.rig.ptt);
+    if (config.rig.ptt != "cat" && config.rig.ptt != "rts" && config.rig.ptt != "dtr")
+        fail("'rig.ptt' must be \"cat\", \"rts\" or \"dtr\"");
+    readInt(rig, "rig", "civ_address", config.rig.civAddress, 0, 255);
+    readInt(rig, "rig", "poll_ms", config.rig.pollMs, 0, 60000);
+
     auto ptt = section(root, "", "ptt", {"input", "output"});
     auto in = section(ptt, "ptt", "input", {"type", "chip", "line", "active_low", "bias", "debounce_ms"});
     read(in, "ptt.input", "type", config.pttInput.type);
@@ -183,8 +197,10 @@ Config parseConfig(std::string_view text)
 
     auto out = section(ptt, "ptt", "output", {"type", "chip", "line", "active_low", "tx_delay_ms", "tx_tail_ms"});
     read(out, "ptt.output", "type", config.pttOutput.type);
-    if (config.pttOutput.type != "gpio" && config.pttOutput.type != "none")
-        fail("'ptt.output.type' must be \"none\" or \"gpio\"");
+    if (config.pttOutput.type != "gpio" && config.pttOutput.type != "none" && config.pttOutput.type != "rig")
+        fail("'ptt.output.type' must be \"none\", \"gpio\" or \"rig\"");
+    if (config.pttOutput.type == "rig" && config.rig.type == "none")
+        fail("'ptt.output.type' is \"rig\", but no radio is set up in [rig]");
     readGpio(out, "ptt.output", config.pttOutput.gpio, false);
     if (config.pttOutput.type == "gpio" && config.pttOutput.gpio.line < 0) fail("'ptt.output.line' is required");
     readInt(out, "ptt.output", "tx_delay_ms", config.txDelayMs, 0, 2000);

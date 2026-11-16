@@ -127,6 +127,26 @@ int main()
     CHECK(rejects(q("[menu]\nsteps_per_detent = 3\n").c_str(), "1, 2 or 4"));
     CHECK(rejects(q("[audio.radio]\nplayback_volume = 120\n").c_str(), "between"));
 
+    // Radio control.
+    CHECK(example.rig.type == "none" && example.rig.ptt == "cat" && example.rig.pollMs == 1000);
+    auto r = fdve::parseConfig(q(R"(
+        [rig]
+        type = "hamlib"
+        model = 3073
+        device = "/dev/ttyUSB0"
+        baud = 19200
+        civ_address = 0x94
+        [ptt.output]
+        type = "rig"
+        tx_delay_ms = 50
+    )"));
+    CHECK(r.rig.type == "hamlib" && r.rig.model == 3073 && r.rig.device == "/dev/ttyUSB0" && r.rig.baud == 19200);
+    CHECK(r.rig.civAddress == 0x94 && r.pttOutput.type == "rig" && r.txDelayMs == 50);
+    CHECK(rejects(q("[rig]\ntype = \"hamlib\"\n").c_str(), "'rig.model' is required"));
+    CHECK(rejects(q("[rig]\ntype = \"flrig\"\n").c_str(), "rig.type"));
+    CHECK(rejects(q("[rig]\nptt = \"vox\"\n").c_str(), "rig.ptt"));
+    CHECK(rejects(q("[ptt.output]\ntype = \"rig\"\n").c_str(), "no radio is set up in [rig]"));
+
     // Mistakes are errors, not silent defaults.
     CHECK(rejects("[modem]\nmod = \"RADEV1\"\n", "unknown key 'modem.mod'"));
     CHECK(rejects("[modme]\n", "unknown section 'modme'"));

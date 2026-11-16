@@ -3,6 +3,7 @@
 #include <stdexcept>
 
 #include "ptt/ConsoleKeys.h"
+#include "util/Log.h"
 
 namespace fdve {
 
@@ -54,6 +55,23 @@ public:
 
 private:
     GpioLine line_;
+};
+
+// Keys the radio over its control connection. The radio gets a moment to
+// confirm; if it does not, the request stays in force and a warning is logged.
+class RigPttOutput : public IPttOutput
+{
+public:
+    explicit RigPttOutput(std::shared_ptr<IRig> rig) : rig_(std::move(rig)) {}
+    ~RigPttOutput() override { rig_->setPtt(false, 500); }
+    void set(bool transmit) override
+    {
+        if (rig_->setPtt(transmit, 500)) return;
+        FDVE_WARN("rig: the radio did not confirm PTT %s within 500 ms", transmit ? "on" : "off");
+    }
+
+private:
+    std::shared_ptr<IRig> rig_;
 };
 
 class FixedModeSwitch : public IModeSwitch
@@ -113,10 +131,11 @@ std::unique_ptr<IPttInput> createPttInput(const PttInputConfig& config)
     throw std::runtime_error("unknown ptt.input type '" + config.type + "'");
 }
 
-std::unique_ptr<IPttOutput> createPttOutput(const PttOutputConfig& config)
+std::unique_ptr<IPttOutput> createPttOutput(const PttOutputConfig& config, std::shared_ptr<IRig> rig)
 {
     if (config.type == "none") return std::make_unique<NonePttOutput>();
     if (config.type == "gpio") return std::make_unique<GpioPttOutput>(config.gpio);
+    if (config.type == "rig") return std::make_unique<RigPttOutput>(std::move(rig));
     throw std::runtime_error("unknown ptt.output type '" + config.type + "'");
 }
 

@@ -34,6 +34,17 @@ add_library(fdve_ptt STATIC
     ptt/GpioLine.cpp
     ptt/PttFactory.cpp)
 target_include_directories(fdve_ptt PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(fdve_ptt PUBLIC fdve_rig)
+
+# --- rig: CAT control of the radio ----------------------------------------------
+add_library(fdve_rig STATIC rig/RigFactory.cpp)
+target_include_directories(fdve_rig PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(fdve_rig PUBLIC fdve_log Threads::Threads)
+if(FDVE_HAVE_HAMLIB)
+    target_sources(fdve_rig PRIVATE rig/HamlibRig.cpp)
+    target_compile_definitions(fdve_rig PRIVATE FDVE_WITH_HAMLIB)
+    target_link_libraries(fdve_rig PRIVATE PkgConfig::HAMLIB)
+endif()
 
 # --- display ------------------------------------------------------------------
 add_library(fdve_display STATIC

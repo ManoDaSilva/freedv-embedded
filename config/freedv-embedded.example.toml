@@ -54,6 +54,25 @@ capture_device = "plughw:CARD=Device_1,DEV=0"
 playback_device = "plughw:CARD=Device_1,DEV=0"
 sample_rate = 48000
 
+# The radio's control connection (CAT), through Hamlib. It is used for keying
+# when ptt.output.type is "rig", and it reads the radio's frequency.
+[rig]
+type = "none"          # "none" or "hamlib"
+
+# Example: Icom IC-7300 on its USB socket.
+# model = 3073           # Hamlib model number; list them with "rigctl -l"
+# device = "/dev/ttyUSB0"  # better: the name under /dev/serial/by-id/, which
+#                          # does not change with the USB socket used
+# baud = 19200           # must match the radio's menu (CI-V USB Baud Rate); leave out for the model's default
+# ptt = "cat"            # "cat": a CAT command keys the radio
+#                        # "rts" or "dtr": that line of the serial port keys it
+#                        # (IC-7300: set "USB SEND" in the radio's menu to match)
+# civ_address = 0x94     # Icom only; leave out for the model's default
+# poll_ms = 1000         # how often the frequency is read; 0 = never
+#
+# A radio shared with other programs: run "rigctld" and connect to it with
+# model = 2 and device = "localhost:4532".
+
 # PTT in: what tells the modem to transmit.
 [ptt.input]
 type = "gpio"          # "gpio", "console" or "none" (receive only)
@@ -66,7 +85,8 @@ debounce_ms = 20
 
 # PTT out: how the radio is keyed.
 [ptt.output]
-type = "none"          # "none" = the radio keys itself (sound card VOX), or "gpio"
+type = "none"          # "none" = the radio keys itself (sound card VOX),
+                       # "gpio", or "rig" = over the control connection in [rig]
 # chip = "/dev/gpiochip0"
 # line = 27
 # active_low = false

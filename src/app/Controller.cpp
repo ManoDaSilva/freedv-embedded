@@ -230,7 +230,8 @@ RunResult runController(const Config& config, const std::string& configPath, con
 {
     // Open the hardware first: these fail fast with a clear message.
     auto pttIn = createPttInput(config.pttInput);
-    auto pttOut = createPttOutput(config.pttOutput);
+    auto rig = createRig(config.rig);
+    auto pttOut = createPttOutput(config.pttOutput, rig);
     auto modeSwitch = createModeSwitch(config.modeSwitch, config.startAnalog);
     UiThread ui(config, configPath);
 
@@ -395,6 +396,9 @@ RunResult runController(const Config& config, const std::string& configPath, con
         status.micDbfs = micCapture.peakDbfs();
         status.rxCallsign = modem.lastRxCallsign();
         status.ownCallsign = config.callsign;
+        status.rigConfigured = config.rig.type != "none";
+        status.rigConnected = rig->connected();
+        status.rigFrequencyHz = rig->frequencyHz();
         ui.publish(status);
 
         if (radioCapture.failed() || micCapture.failed() || radioPlayback.failed() || speakerPlayback.failed())

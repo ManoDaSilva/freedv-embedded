@@ -426,7 +426,7 @@ static void testSettings()
     CHECK(readFile(path) == text);
 
     // Every section of the file has a submenu, plus volume.
-    for (const char* label : {"Volume", "Modem", "Mode switch", "Audio", "PTT", "Display", "Controls", "Log",
+    for (const char* label : {"Volume", "Modem", "Mode switch", "Audio", "Rig", "PTT", "Display", "Controls", "Log",
                               "Save & restart", "Discard changes", "System", "Shut down"})
         CHECK(select(menu, label));
 
@@ -565,6 +565,7 @@ static void testSettings()
         if (!capture) devices.push_back({"plughw:CARD=vc4hdmi0,DEV=0", "vc4hdmi0"}); // plays only
         return devices;
     };
+    fake.serialPorts = [] { return std::vector<std::string>{"/dev/serial/by-id/usb-Silicon_Labs_CP2102_IC-7300-if00-port0", "/dev/ttyUSB0"}; };
     std::string probed;
     std::string probeAnswer = "cannot open ALSA device: busy";
     fake.probe = [&](const std::string& device, bool capture, int rate) {
@@ -628,6 +629,49 @@ static void testSettings()
     CHECK(select(menu4, "Save & restart"));
     menu4.handle(click());
     CHECK(probed.empty() && fourth.restartRequested());
+
+    // Rig: set up an IC-7300 from the menu and key it over CAT.
+    SettingsMenu fifth(loadConfig(path), path, fake);
+    Menu& menu5 = fifth.menu();
+    menu5.open();
+    CHECK(select(menu5, "Rig"));
+    menu5.handle(click());
+    CHECK(select(menu5, "Type"));
+    menu5.handle(click());
+    menu5.handle(turn(1)); // hamlib
+    menu5.handle(click());
+    CHECK(select(menu5, "Model"));
+    menu5.handle(click()); // starts at "0"
+    const std::string digits = " ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789/-";
+    const std::string before = "0";
+    const std::string wanted = "3073";
+    for (size_t i = 0; i < wanted.size(); i++)
+    {
+        const char from = i < before.size() ? before[i] : ' ';
+        menu5.handle(turn(static_cast<int>(digits.find(wanted[i])) - static_cast<int>(digits.find(from))));
+        menu5.handle(click());
+    }
+    menu5.handle(click()); // blank: end
+    CHECK(select(menu5, "Port"));
+    menu5.handle(click());
+    menu5.handle(turn(-10)); // first port in the list
+    menu5.handle(click());
+    snapshot(menu5, "menu_11_rig");
+    menu5.handle(longPress());
+    CHECK(select(menu5, "PTT"));
+    menu5.handle(click());
+    CHECK(select(menu5, "Out type"));
+    menu5.handle(click());
+    menu5.handle(turn(5)); // last: rig
+    menu5.handle(click());
+    menu5.handle(longPress());
+    CHECK(select(menu5, "Save & restart"));
+    menu5.handle(click());
+    CHECK(fifth.restartRequested());
+    Config withRig = loadConfig(path);
+    CHECK(withRig.rig.type == "hamlib" && withRig.rig.model == 3073);
+    CHECK(withRig.rig.device == "/dev/serial/by-id/usb-Silicon_Labs_CP2102_IC-7300-if00-port0");
+    CHECK(withRig.pttOutput.type == "rig");
 
     std::remove(path.c_str());
 }

@@ -19,6 +19,7 @@ headset and adds RADE V1 to a radio that does not have it.
 - [Build](#build)
 - [Configure and run](#configure-and-run)
 - [PTT](#ptt)
+- [Radio control (CAT)](#radio-control-cat)
 - [Analog mode](#analog-mode)
 - [Display](#display)
   - [Wiring](#wiring)
@@ -86,7 +87,7 @@ The build needs network access. Opus, RNNoise and rade_c are downloaded the
 first time, which takes a while.
 
 ```bash
-sudo apt install build-essential cmake git autoconf automake libtool wget patch libasound2-dev libsamplerate0-dev libebur128-dev
+sudo apt install build-essential cmake git autoconf automake libtool wget patch libasound2-dev libsamplerate0-dev libebur128-dev libhamlib-dev libhamlib-utils
 ```
 
 ```bash
@@ -115,6 +116,7 @@ in that file.
 | `[modem]` | Mode, callsign, mode at start-up |
 | `[mode_switch]` | The digital/analog switch |
 | `[audio]`, `[audio.radio]`, `[audio.headset]` | Sound devices, sample rates, buffering |
+| `[rig]` | The radio's control connection (CAT) |
 | `[ptt.input]`, `[ptt.output]` | PTT button, radio keying, TX timing |
 | `[display]` | Console status line, SSD1306 |
 | `[menu]` | The knob that operates the settings menu |
@@ -166,6 +168,78 @@ PTT output (`ptt.output.type`):
 |---|---|
 | `none` | The radio keys itself from the audio (sound card VOX) |
 | `gpio` | A GPIO line keys the radio |
+| `rig` | The radio is keyed over its control connection, see [radio control](#radio-control-cat) |
+
+## Radio control (CAT)
+
+`[rig]` describes the radio's control connection. It goes through
+[Hamlib](https://hamlib.github.io/), so it works with the radios Hamlib
+supports. One connection serves several uses: keying the transmitter, and
+reading the radio's frequency, which FreeDV Reporter support will need later.
+
+Hamlib is an optional build dependency. Install it before running CMake:
+
+```bash
+sudo apt install libhamlib-dev libhamlib-utils
+```
+
+CMake then prints "Hamlib found: CAT control enabled". Without it the program
+still builds, and refuses `type = "hamlib"` with an explanation.
+
+Example for an Icom IC-7300 on its USB socket, keyed over CAT:
+
+```toml
+[rig]
+type = "hamlib"
+model = 3073
+device = "/dev/ttyUSB0"
+baud = 19200
+
+[ptt.output]
+type = "rig"
+tx_delay_ms = 50
+```
+
+| Key | Meaning |
+|---|---|
+| `model` | Hamlib model number. `rigctl -l` lists them. |
+| `device` | Serial port. The names under `/dev/serial/by-id/` stay the same whichever USB socket is used. For a network connection, `host:port`. |
+| `baud` | Must match the radio's setting. Leave out for the model's default. |
+| `ptt` | `cat`: a CAT command keys the radio. `rts` or `dtr`: that line of the serial port keys it. |
+| `civ_address` | Icom only. Leave out for the model's default. |
+| `poll_ms` | How often the frequency is read. 0 turns it off. |
+
+On the IC-7300, the baud rate is in the radio's menu under "CI-V USB Baud
+Rate". The built-in USB sound card is the same cable, so audio and CAT need
+only one USB lead. For `ptt = "rts"` or `"dtr"`, set "USB SEND" in the radio's
+menu to the same line.
+
+To check the connection before using it here:
+
+```bash
+rigctl -m 3073 -r /dev/ttyUSB0 -s 19200 f
+```
+
+It prints the frequency when the radio answers. The user needs access to the
+serial port, which on Raspberry Pi OS means being in the `dialout` group.
+
+How it behaves:
+
+- The radio is talked to on its own thread. A slow or disconnected radio does
+  not delay audio or the PTT sequence.
+- The program starts even when the radio is off. It tries to connect every
+  three seconds and logs when the connection comes and goes.
+- Keying waits up to 500 ms for the radio to accept the command, then carries
+  on and logs a warning. The request stays in force.
+- After connecting, and when the program stops, the radio is unkeyed.
+- The frequency is shown on the console status line. It is not read while
+  transmitting, so PTT commands never wait behind a poll.
+
+To share the radio with other programs, such as a logger, run Hamlib's
+`rigctld` and connect to it with `model = 2` and `device = "localhost:4532"`.
+
+`[rig]` is also in the settings menu: type, model number, serial port (from a
+list of the ports present), baud rate and PTT method.
 
 ## Analog mode
 
@@ -429,6 +503,7 @@ position, press on a blank to finish.
 | Modem | `[modem]` | Callsign, mode, start in analog |
 | Mode switch | `[mode_switch]` | Type, GPIO line, polarity, bias, action, debounce |
 | Audio | `[audio]`, `[audio.radio]`, `[audio.headset]` | Sound device for each of the four directions, sample rates, period, prebuffer |
+| Rig | `[rig]` | Type, Hamlib model number, serial port, baud rate, PTT method |
 | PTT | `[ptt.input]`, `[ptt.output]` | Types, GPIO lines, polarity, bias, debounce, TX delay and tail |
 | Display | `[display]` | Refresh, contrast, rotation, console status line |
 | Controls | `[menu]` | Knob direction, LED mode and brightness, long press time, menu timeout |
@@ -557,6 +632,9 @@ src/
   ptt/GpioLine.*             GPIO through the kernel character device
   ptt/ConsoleKeys.*          keyboard for bench tests: space = PTT, a = analog
   ptt/PttFactory.*           config -> PTT input, PTT output, mode switch
+  rig/IRig.h                 the radio's control connection: PTT, frequency
+  rig/HamlibRig.*            Hamlib implementation, on its own thread
+  rig/RigFactory.cpp         config -> rig
   display/IDisplay.h         update(ModemStatus)
   display/ConsoleDisplay.*   status line on stderr
   display/Framebuffer.*      128x64 one bit canvas, text, rectangles
@@ -581,7 +659,7 @@ adding one class and one line in the factory:
 | Planned | Where |
 |---|---|
 | PTT in from a CMX108 or similar | new `IPttInput` in `src/ptt`, new `type` in `PttFactory.cpp` and `Config.cpp` |
-| PTT out through hamlib or rigctld | new `IPttOutput` in `src/ptt` |
+| FreeDV Reporter | uses `IRig::frequencyHz()` and the backend's reporting library |
 | Other displays | new `IDisplay` in `src/display`. `StatusScreen` can be reused for any 128x64 panel. |
 | I2S codec, other audio paths | new `IAudioStream` in `src/audio`, or just a different ALSA device name |
 
@@ -627,6 +705,7 @@ ctest --test-dir build --output-on-failure
 | `audio_pump` | Capture pacing, playback prebuffer and drain, on null devices |
 | `analog_path` | Pass-through, resampling 48 kHz to 44.1 kHz, overflow, clear |
 | `display` | Status screen layout: level bar, TX band, SNR, callsign, empty row at the colour change |
+| `rig` | Keying and frequency read-out against Hamlib's dummy radio, a model without CAT PTT, an unreachable radio. Only built when Hamlib is installed. |
 | `menu` | Encoder decoding, long press, config file patching, menu navigation and editing, saving, refusing a bad change |
 | `modem_loopback` | Speech in, modem signal out, back into the receiver, sync and callsign decode |
 | `daemon_null_audio` | Whole program on null devices for 3 seconds |
@@ -648,5 +727,5 @@ Next:
 1. Try the settings menu with a knob on the Pi.
 2. GPIO PTT and mode switch.
 3. Measure CPU load in RX and TX on the Pi.
-4. PTT out through hamlib or rigctld.
+4. Try CAT control with a real radio, then FreeDV Reporter support on top of it.
 5. RADE V2, once the upstream backend supports it.

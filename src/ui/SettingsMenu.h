@@ -23,14 +23,17 @@ namespace fdve {
 //
 // Volume is the exception. It acts on the sound card at once, like
 // alsamixer, and is saved when leaving the volume menu, without a restart.
-// How the settings menu looks at the sound hardware. The defaults ask ALSA;
-// tests supply their own.
+// How the settings menu looks at the hardware: sound devices and serial
+// ports. The defaults ask the system; tests supply their own.
 struct AudioHardware
 {
     // Devices that can record (true) or play (false).
     std::function<std::vector<AlsaDevice>(bool capture)> list;
     // Tries to open a device. Returns "" when it opens, the reason otherwise.
     std::function<std::string(const std::string& device, bool capture, int sampleRate)> probe;
+
+    // Serial ports a radio's control connection could be on.
+    std::function<std::vector<std::string>()> serialPorts;
 
     static AudioHardware real();
 };

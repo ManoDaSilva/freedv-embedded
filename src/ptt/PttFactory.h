@@ -5,6 +5,7 @@
 
 #include "ptt/GpioLine.h"
 #include "ptt/IPtt.h"
+#include "rig/IRig.h"
 
 namespace fdve {
 
@@ -16,7 +17,7 @@ struct PttInputConfig
 
 struct PttOutputConfig
 {
-    std::string type = "none"; // "none" (radio VOX) or "gpio"
+    std::string type = "none"; // "none" (radio VOX), "gpio" or "rig" (CAT, see [rig])
     GpioLine::Config gpio;
 };
 
@@ -30,7 +31,8 @@ struct ModeSwitchConfig
 // Add new PTT sources (CMX108, serial RTS/DTR, ...) and sinks (hamlib,
 // rigctld, CAT, ...) here.
 std::unique_ptr<IPttInput> createPttInput(const PttInputConfig& config);
-std::unique_ptr<IPttOutput> createPttOutput(const PttOutputConfig& config);
+// rig: the radio connection, used by type "rig".
+std::unique_ptr<IPttOutput> createPttOutput(const PttOutputConfig& config, std::shared_ptr<IRig> rig);
 
 // startAnalog is the mode at start-up. A gpio switch with action "level"
 // ignores it: the switch position decides.

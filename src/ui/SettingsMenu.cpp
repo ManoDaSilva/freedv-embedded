@@ -5,6 +5,7 @@
 #include <chrono>
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <sstream>
 
@@ -63,6 +64,23 @@ AudioHardware AudioHardware::real()
 {
     AudioHardware hardware;
     hardware.list = [](bool capture) { return listAlsaDevices(capture); };
+    hardware.serialPorts = [] {
+        std::vector<std::string> ports;
+        std::error_code ignored;
+        // Names under by-id stay the same whichever USB socket is used.
+        for (const char* dir : {"/dev/serial/by-id", "/dev"})
+        {
+            for (const auto& entry : std::filesystem::directory_iterator(dir, ignored))
+            {
+                const std::string name = entry.path().filename().string();
+                const bool wanted = std::string(dir) != "/dev" || name.rfind("ttyUSB", 0) == 0 ||
+                                    name.rfind("ttyACM", 0) == 0 || name.rfind("ttyAMA", 0) == 0;
+                if (wanted) ports.push_back(entry.path().string());
+            }
+        }
+        std::sort(ports.begin(), ports.end());
+        return ports;
+    };
     hardware.probe = [](const std::string& device, bool capture, int sampleRate) -> std::string {
         try
         {
@@ -382,12 +400,76 @@ MenuItem SettingsMenu::build()
         toggle("In act. low", "ptt.input", "active_low", c.pttInput.gpio.activeLow),
         biasChoice("In bias", "ptt.input", c.pttInput.gpio.bias),
         number("In debounce", "ptt.input", "debounce_ms", c.pttInput.gpio.debounceMs, 0, 200, 5, "ms"),
-        choice("Out type", "ptt.output", "type", c.pttOutput.type, {"none", "gpio"}),
+        choice("Out type", "ptt.output", "type", c.pttOutput.type, {"none", "gpio", "rig"}),
         number("Out line", "ptt.output", "line", c.pttOutput.gpio.line, 0, 40, 1, ""),
         toggle("Out act. low", "ptt.output", "active_low", c.pttOutput.gpio.activeLow),
         number("TX delay", "ptt.output", "tx_delay_ms", c.txDelayMs, 0, 2000, 10, "ms"),
         number("TX tail", "ptt.output", "tx_tail_ms", c.txTailMs, 0, 2000, 10, "ms"),
     }));
+
+    // [rig]
+    {
+        // The model is a number of up to five digits; entered digit by digit.
+        MenuItem model;
+        model.kind = MenuItem::Kind::Text;
+        model.label = "Model";
+        model.maxLength = 5;
+        model.get = [&c] { return std::to_string(c.rig.model); };
+        model.set = [this, &c](const std::string& value) {
+            if (value.empty() || value.find_first_not_of("0123456789") != std::string::npos)
+            {
+                menu_.showMessage("Model", "Digits only: the Hamlib model number.");
+                return;
+            }
+            const int number = std::stoi(value);
+            if (number == c.rig.model) return;
+            c.rig.model = number;
+            set("rig", "model", std::to_string(number));
+        };
+
+        // Serial ports present now, by their stable names where the system
+        // provides them, plus the configured one.
+        std::vector<std::string> ports;
+        std::vector<std::string> labels;
+        for (const auto& port : hardware_.serialPorts())
+        {
+            ports.push_back(port);
+            // Show the end of the name: that is where the ports differ.
+            labels.push_back(port.size() > 15 ? port.substr(port.size() - 15) : port);
+        }
+        if (std::find(ports.begin(), ports.end(), c.rig.device) == ports.end())
+        {
+            ports.push_back(c.rig.device);
+            labels.push_back(c.rig.device.empty() ? "(default)"
+                             : c.rig.device.size() > 15 ? c.rig.device.substr(c.rig.device.size() - 15) : c.rig.device);
+        }
+
+        MenuItem baud;
+        baud.kind = MenuItem::Kind::Choice;
+        baud.label = "Baud";
+        baud.choices = {"0", "4800", "9600", "19200", "38400", "57600", "115200"};
+        baud.choiceLabels = {"default", "4800", "9600", "19200", "38400", "57600", "115200"};
+        if (std::find(baud.choices.begin(), baud.choices.end(), std::to_string(c.rig.baud)) == baud.choices.end())
+        {
+            baud.choices.push_back(std::to_string(c.rig.baud));
+            baud.choiceLabels.push_back(std::to_string(c.rig.baud));
+        }
+        baud.get = [&c] { return std::to_string(c.rig.baud); };
+        baud.set = [this, &c](const std::string& value) {
+            const int rate = std::stoi(value);
+            if (rate == c.rig.baud) return;
+            c.rig.baud = rate;
+            set("rig", "baud", value);
+        };
+
+        root.push_back(submenu("Rig", {
+            choice("Type", "rig", "type", c.rig.type, {"none", "hamlib"}),
+            std::move(model),
+            choice("Port", "rig", "device", c.rig.device, ports, labels),
+            std::move(baud),
+            choice("PTT via", "rig", "ptt", c.rig.ptt, {"cat", "rts", "dtr"}),
+        }));
+    }
 
     // [display]. The display type and its I2C address are left out on
     // purpose: a wrong value there would switch off this very menu.

@@ -6,6 +6,7 @@
 #include "audio/AudioFactory.h"
 #include "display/IDisplay.h"
 #include "ptt/PttFactory.h"
+#include "rig/IRig.h"
 #include "ui/MenuInput.h"
 #include "util/Log.h"
 
@@ -40,6 +41,8 @@ struct Config
     SoundCardConfig headset;
     int periodMs = 20;
     int prebufferMs = 160;
+
+    RigConfig rig;
 
     PttInputConfig pttInput;
     PttOutputConfig pttOutput;
