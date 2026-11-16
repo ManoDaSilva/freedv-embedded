@@ -231,10 +231,27 @@ RunResult runController(const Config& config, const std::string& configPath, con
 {
     // Open the hardware first: these fail fast with a clear message.
     auto pttIn = createPttInput(config.pttInput);
-    auto rig = createRig(config.rig);
+    // Radio control. As with the sound devices further down: with a settings
+    // menu available, a problem here must not end the program, or it could
+    // not be fixed from the menu. Carry on without radio control and say so
+    // on the display.
+    std::shared_ptr<IRig> rig;
+    std::string rigProblem;
+    try
+    {
+        rig = createRig(config.rig);
+    }
+    catch (const std::exception& e)
+    {
+        if (config.menu.type == "none") throw;
+        rigProblem = e.what();
+        FDVE_ERROR("%s. Running without radio control.", e.what());
+        rig = createRig(RigConfig{});
+    }
     auto pttOut = createPttOutput(config.pttOutput, rig);
     auto modeSwitch = createModeSwitch(config.modeSwitch, config.startAnalog);
     UiThread ui(config, configPath);
+    if (!rigProblem.empty()) ui.notify("Rig error", rigProblem);
 
     // Sound devices. With a settings menu available, a device that does not
     // open must not end the program: the operator could then never pick
@@ -263,7 +280,8 @@ RunResult runController(const Config& config, const std::string& configPath, con
     auto micIn = openStream(config.headset, config.headset.captureDevice, StreamDirection::Capture, "Mic");
     auto speakerOut = openStream(config.headset, config.headset.playbackDevice, StreamDirection::Playback, "Headphones");
     if (!audioProblems.empty())
-        ui.notify("Audio error", "Cannot open: " + audioProblems + ". Pick a device under Audio.");
+        ui.notify("Audio error", "Cannot open: " + audioProblems + ". Pick a device under Audio." +
+                                     (rigProblem.empty() ? "" : " Also: " + rigProblem));
 
     Modem::Params params;
     params.mode = config.mode;

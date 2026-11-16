@@ -34,6 +34,8 @@ struct AudioHardware
 
     // Serial ports a radio's control connection could be on.
     std::function<std::vector<std::string>()> serialPorts;
+    // Checks radio control settings without connecting. "" when usable.
+    std::function<std::string(const RigConfig&)> rigCheck;
 
     static AudioHardware real();
 };

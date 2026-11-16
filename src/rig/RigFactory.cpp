@@ -19,6 +19,17 @@ public:
 
 } // namespace
 
+std::string checkRigConfig(const RigConfig& config)
+{
+    if (config.type == "none") return "";
+    if (config.type != "hamlib") return "unknown rig type '" + config.type + "'";
+#ifdef FDVE_WITH_HAMLIB
+    return HamlibRig::check(config);
+#else
+    return "This program was built without Hamlib. Install libhamlib-dev, run cmake again and rebuild.";
+#endif
+}
+
 std::shared_ptr<IRig> createRig(const RigConfig& config)
 {
     if (config.type == "none") return std::make_shared<NoRig>();
@@ -27,8 +38,7 @@ std::shared_ptr<IRig> createRig(const RigConfig& config)
 #ifdef FDVE_WITH_HAMLIB
         return std::make_shared<HamlibRig>(config);
 #else
-        throw std::runtime_error("rig type \"hamlib\" is not available: this program was built without Hamlib "
-                                 "(install libhamlib-dev and rebuild)");
+        throw std::runtime_error("rig: " + checkRigConfig(config));
 #endif
     }
     throw std::runtime_error("unknown rig type '" + config.type + "'");

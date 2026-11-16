@@ -22,6 +22,10 @@ public:
     explicit HamlibRig(const RigConfig& config);
     ~HamlibRig() override;
 
+    // "" when Hamlib accepts the model and the settings, the reason otherwise.
+    // Does not touch the radio.
+    static std::string check(const RigConfig& config);
+
     bool setPtt(bool transmit, int timeoutMs) override;
     bool connected() const override { return connected_.load(); }
     long long frequencyHz() const override { return frequency_.load(); }

@@ -87,6 +87,17 @@ int main()
     badType.type = "flrig";
     CHECK(throws(badType, "unknown rig type"));
 
+    // The check used before saving settings: no connection is made.
+    CHECK(checkRigConfig(RigConfig{}).empty());
+    CHECK(checkRigConfig(dummy).empty());
+    CHECK(checkRigConfig(unknown).find("does not know model 99999") != std::string::npos);
+    CHECK(checkRigConfig(badPtt).find("ptt must be") != std::string::npos);
+    CHECK(checkRigConfig(badType).find("unknown rig type") != std::string::npos);
+    RigConfig notPluggedIn = dummy;
+    notPluggedIn.model = 3085; // IC-705
+    notPluggedIn.device = "/dev/ttyDoesNotExist";
+    CHECK(checkRigConfig(notPluggedIn).empty()); // a radio that is off is not a config error
+
     // A radio that is not there (IC-7300 on a serial port that does not
     // exist): creating it works, keying times out instead of blocking, and
     // shutting down is quick.

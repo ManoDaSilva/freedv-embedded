@@ -582,6 +582,8 @@ static void testSettings()
         if (!capture) devices.push_back({"plughw:CARD=vc4hdmi0,DEV=0", "vc4hdmi0"}); // plays only
         return devices;
     };
+    std::string rigAnswer;
+    fake.rigCheck = [&](const RigConfig&) { return rigAnswer; };
     fake.serialPorts = [] { return std::vector<std::string>{"/dev/serial/by-id/usb-Silicon_Labs_CP2102_IC-7300-if00-port0", "/dev/ttyUSB0"}; };
     std::string probed;
     std::string probeAnswer = "cannot open ALSA device: busy";
@@ -682,6 +684,17 @@ static void testSettings()
     menu5.handle(turn(5)); // last: rig
     menu5.handle(click());
     menu5.handle(longPress());
+    // Radio control that cannot work (here: no Hamlib in the build) is
+    // refused on the display, and nothing is written.
+    const std::string beforeRig = readFile(path);
+    rigAnswer = "This program was built without Hamlib.";
+    CHECK(select(menu5, "Save & restart"));
+    menu5.handle(click());
+    snapshot(menu5, "menu_13_rig_refused");
+    CHECK(!fifth.restartRequested() && readFile(path) == beforeRig);
+    menu5.handle(click());
+    rigAnswer.clear();
+
     CHECK(select(menu5, "Save & restart"));
     menu5.handle(click());
     CHECK(fifth.restartRequested());

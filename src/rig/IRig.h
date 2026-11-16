@@ -38,6 +38,11 @@ struct RigConfig
     int pollMs = 1000;         // how often the frequency is read
 };
 
+// Checks a configuration without connecting to the radio: is Hamlib built
+// in, does the model exist, are the settings accepted. Returns "" when it is
+// usable, the reason otherwise. createRig() throws for the same reasons.
+std::string checkRigConfig(const RigConfig& config);
+
 // Never returns null: with type "none" the result is a rig that is never connected.
 std::shared_ptr<IRig> createRig(const RigConfig& config);
 

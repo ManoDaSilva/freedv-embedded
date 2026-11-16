@@ -421,6 +421,10 @@ sudo apt install libhamlib-dev libhamlib-utils
 CMake then prints "Hamlib found: CAT control enabled". Without it the program
 still builds, and refuses `type = "hamlib"` with an explanation.
 
+If you install Hamlib after the first build, run the `cmake -S ... -B ...`
+command again before building. `cmake --build` alone does not look for newly
+installed libraries. Nothing has to be deleted.
+
 Example for an Icom IC-7300 on its USB socket, keyed over CAT:
 
 ```toml
@@ -606,29 +610,23 @@ This writes one PBM image per situation. The layout is in
 `display.refresh_ms` sets how often the screen is redrawn. The default is 250,
 which is four times per second. The allowed range is 50 to 10000.
 
-The I2C bus is the practical limit. Only the parts of the screen that changed
-are sent, in strips of 8 pixel rows. Calculated transfer times, not measured:
+The I2C bus is the practical limit. It runs at 100 kHz, and only the parts of
+the screen that changed are sent, in strips of 8 pixel rows. Calculated
+transfer times, not measured:
 
-| | 100 kHz bus (Pi default) | 400 kHz bus |
-|---|---|---|
-| One strip | about 13 ms | about 3 ms |
-| AF bar changed (2 strips) | about 25 ms | about 6 ms |
-| Whole screen changed (8 strips) | about 100 ms | about 25 ms |
+| Change | Time |
+|---|---|
+| One strip | about 13 ms |
+| AF bar changed (2 strips) | about 25 ms |
+| Whole screen changed (8 strips) | about 100 ms |
 
 The display thread draws and then sleeps `refresh_ms`, so the real period is
 `refresh_ms` plus the transfer time. The level meter is a peak meter that falls
 25 dB per second, so short peaks stay visible between updates.
 
-For a livelier bar, raise the bus speed and lower `refresh_ms` to about 100.
-Add this line to `/boot/firmware/config.txt` and reboot:
-
-```
-dtparam=i2c_arm_baudrate=400000
-```
-
-At 100 kHz, values below about 100 are not useful, because a full screen
-change already takes that long. The display has its own thread, so a slow
-display does not delay PTT or audio.
+Values below about 100 are not useful, because a full screen change already
+takes that long. The display has its own thread, so a slow display does not
+delay PTT or audio.
 
 ## Settings menu
 
@@ -697,12 +695,10 @@ only the brightness registers that changed, at most 10 times per second. For
 "follow" it selects the module's own following animation.
 
 Once a second the program checks that the module still has the expected
-animation and an untouched config register, and corrects them if not. That
-covers a module restart and a write that was corrupted on the bus. If the
+animation and an untouched config register, and corrects them if not. If the
 module drops out of LED level mode three times within a minute, the program
-stops writing LED levels until its next start, lets the LEDs follow the knob,
-and logs a warning with the module's last reset cause. If you see that
-warning, try the bus at 100 kHz.
+stops writing LED levels until its next start and lets the LEDs follow the
+knob.
 
 The module also has two separate lamps, TX_EN and RX_EN, wired to GPIO lines
 instead of I2C:
@@ -716,18 +712,13 @@ They are only driven with `type = "rackui"`. Set a line to -1 to leave that
 lamp alone. Do not use these two lines for PTT or the mode switch.
 
 At start-up the program waits up to 3 seconds for the module to answer, and
-logs the firmware version and the cause of the module's last reset.
+logs its firmware version.
 
 The module reads are checked before they count. The module stretches the I2C
 clock, which the Raspberry Pi's I2C controller does not always handle, so a
 read can occasionally return wrong bytes without an error. A changed reading is
 therefore only accepted when a second read returns the same values. Discarded
 readings are counted in the log (`rackui: N unconfirmed reading(s) discarded`).
-
-The module's firmware documents 100 kHz as its bus speed. It has been seen to
-work at 400 kHz as well (`i2c_arm_baudrate=400000`, see
-[refresh rate](#refresh-rate)). If discarded readings pile up in the log at
-400 kHz, go back to 100 kHz.
 
 If the menu moves by itself, set `log.level = "debug"`. Every knob event is
 then logged with what it did, and for the Rack UI every discarded reading.
@@ -772,10 +763,15 @@ only happens while receiving.
   without a line number, is not saved, and the screen shows the reason.
 - A sound device that was changed must open before the change is saved. If it
   does not, the screen shows the reason and nothing is written.
+- Radio control must be usable: Hamlib built in, and a model number it knows.
+  Otherwise the screen shows the reason and nothing is written.
 - The file is replaced in one step, so a power cut cannot leave half a file.
 - "Discard changes" drops everything that is not saved yet.
 
 The user running the program needs write access to the config file.
+
+The same goes for radio control that cannot be set up at start-up: with a menu
+configured, the program runs without it and the display shows the reason.
 
 If a sound device cannot be opened at start-up, for example because it was
 unplugged, the program keeps running when a menu is configured. That direction
@@ -1005,21 +1001,40 @@ None of the tests need sound cards, GPIO or a display.
 
 ## Status and next steps
 
-Works on a Pi 4 with two USB sound cards and a two-colour SSD1306: receive,
-transmit, keyboard PTT, status screen.
+Confirmed on a Raspberry Pi 4 with an Icom IC-705 on USB, a USB headset, an
+SSD1306 display (single colour and two-colour) and a Rack UI module:
 
-Not confirmed on hardware yet: the settings menu with a real knob (GPIO encoder
-or Rack UI), the volume controls and the audio device list on real sound cards,
-GPIO PTT, the GPIO mode switch, PTT out on a GPIO line, and CPU load figures.
-The menu logic, the file writing and the screens are covered by tests.
+- Receive and transmit in RADE V1, keyboard PTT
+- Radio control (CAT) with the IC-705: keying over CAT, and the frequency in
+  the System menu
+- Analog mode and switching between the modes
+- The status screen, the volume screen and the settings menu
+- The Rack UI knob, its LED ring, and the TX and RX lamps
+- Volume from the knob and from the menu, kept across restarts
+- Choosing the sound devices from the menu
+- Starting with a sound device missing
+- The System menu's temperature reading
+
+CPU load on the Pi 4, read from the System menu: about 10 % idle, 20 % while
+receiving and 30 % while transmitting.
+
+Not confirmed on hardware yet:
+
+- Radio control: keying with the RTS or DTR line, reconnecting after the
+  radio was unplugged, radios other than the IC-705
+- Shut down from the menu, and starting at boot as a service
+- Everything on GPIO lines: PTT in, PTT out, the mode switch, a rotary encoder
+- Sound cards running at two different sample rates
+- The getting started guide, followed from an empty SD card
+
+These parts are covered by the automated tests as far as that is possible
+without hardware.
 
 Next:
 
-1. Try the settings menu with a knob on the Pi.
+1. FreeDV Reporter support, using the frequency from the radio.
 2. GPIO PTT and mode switch.
-3. Measure CPU load in RX and TX on the Pi.
-4. Try CAT control with a real radio, then FreeDV Reporter support on top of it.
-5. RADE V2, once the upstream backend supports it.
+3. RADE V2, once the upstream backend supports it.
 
 ## Acknowledgements
 

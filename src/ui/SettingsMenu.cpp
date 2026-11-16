@@ -64,6 +64,7 @@ AudioHardware AudioHardware::real()
 {
     AudioHardware hardware;
     hardware.list = [](bool capture) { return listAlsaDevices(capture); };
+    hardware.rigCheck = [](const RigConfig& rig) { return checkRigConfig(rig); };
     hardware.serialPorts = [] {
         std::vector<std::string> ports;
         std::error_code ignored;
@@ -647,6 +648,15 @@ bool SettingsMenu::save(std::string& error)
     }
 
     if (!changedDevicesOpen(error)) return false;
+
+    // Radio control must be usable too: Hamlib built in, a model it knows.
+    // Otherwise the program would restart into a config it stops on.
+    const std::string rigProblem = hardware_.rigCheck(edited_.rig);
+    if (!rigProblem.empty())
+    {
+        error = "Rig: " + rigProblem;
+        return false;
+    }
 
     // Write a new file and rename it over the old one, so a power cut cannot
     // leave half a file. If the directory is not writable, write in place.

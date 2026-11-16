@@ -44,24 +44,23 @@ std::string errorText(int code)
 void configure(RIG* rig, const char* name, const std::string& value)
 {
     const token_t token = rig_token_lookup(rig, name);
-    if (token == RIG_CONF_END) throw std::runtime_error(std::string("rig: Hamlib has no setting '") + name + "'");
+    if (token == RIG_CONF_END) throw std::runtime_error(std::string("Hamlib has no setting '") + name + "'");
     const int rc = rig_set_conf(rig, token, value.c_str());
     if (rc != RIG_OK)
-        throw std::runtime_error(std::string("rig: cannot set ") + name + " to '" + value + "': " + errorText(rc));
+        throw std::runtime_error(std::string("cannot set ") + name + " to '" + value + "': " + errorText(rc));
 }
 
 } // namespace
 
-HamlibRig::HamlibRig(const RigConfig& config) : config_(config)
-{
-    // Hamlib prints its own diagnostics. Show them only when debugging.
-    rig_set_debug(logLevel() == LogLevel::Debug ? RIG_DEBUG_WARN : RIG_DEBUG_NONE);
+namespace {
 
-    // Check the settings now, so a wrong model number or value is reported at
-    // start-up. Whether the radio answers is found out by the worker.
+// Creates the Hamlib handle and applies the settings, without opening the
+// connection. Throws with the reason when the model or a setting is refused.
+RIG* prepare(const RigConfig& config)
+{
     RIG* rig = rig_init(config.model);
     if (rig == nullptr)
-        throw std::runtime_error("rig: Hamlib does not know model " + std::to_string(config.model) +
+        throw std::runtime_error("Hamlib does not know model " + std::to_string(config.model) +
                                  " (list the models with \"rigctl -l\")");
     try
     {
@@ -70,12 +69,47 @@ HamlibRig::HamlibRig(const RigConfig& config) : config_(config)
         if (config.civAddress > 0) configure(rig, "civaddr", std::to_string(config.civAddress));
         if (config.ptt == "rts") configure(rig, "ptt_type", "RTS");
         else if (config.ptt == "dtr") configure(rig, "ptt_type", "DTR");
-        else if (config.ptt != "cat") throw std::runtime_error("rig: ptt must be \"cat\", \"rts\" or \"dtr\"");
+        else if (config.ptt != "cat") throw std::runtime_error("ptt must be \"cat\", \"rts\" or \"dtr\"");
     }
     catch (...)
     {
         rig_cleanup(rig);
         throw;
+    }
+    return rig;
+}
+
+} // namespace
+
+std::string HamlibRig::check(const RigConfig& config)
+{
+    rig_set_debug(RIG_DEBUG_NONE);
+    try
+    {
+        rig_cleanup(prepare(config));
+        return "";
+    }
+    catch (const std::exception& e)
+    {
+        return e.what();
+    }
+}
+
+HamlibRig::HamlibRig(const RigConfig& config) : config_(config)
+{
+    // Hamlib prints its own diagnostics. Show them only when debugging.
+    rig_set_debug(logLevel() == LogLevel::Debug ? RIG_DEBUG_WARN : RIG_DEBUG_NONE);
+
+    // The settings are checked now, so a wrong model number or value is
+    // reported at start-up. Whether the radio answers is found out by the worker.
+    RIG* rig = nullptr;
+    try
+    {
+        rig = prepare(config);
+    }
+    catch (const std::exception& e)
+    {
+        throw std::runtime_error(std::string("rig: ") + e.what());
     }
     FDVE_INFO("rig: %s %s (Hamlib model %d) on %s", rig->caps->mfg_name, rig->caps->model_name, config.model,
               config.device.empty() ? "its default port" : config.device.c_str());

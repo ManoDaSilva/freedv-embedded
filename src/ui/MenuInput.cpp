@@ -261,18 +261,16 @@ public:
             close(fd_);
             throw std::runtime_error("rackui: cannot select I2C address: " + std::string(std::strerror(err)));
         }
-        // The module may be restarting (its watchdog, or power just applied),
-        // and a single read can fail on a busy bus. Keep trying for a moment
-        // before giving up, and start from a reading that was seen twice.
+        // The module may still be starting, and a single read can fail on a
+        // busy bus. Keep trying for a moment before giving up, and start from
+        // a reading that was seen twice.
         uint8_t version[2] = {0, 0};
-        uint8_t resetCause = 0;
         RackUiDecoder::Reading a, b;
         bool ok = false;
         for (int attempt = 0; attempt < 30 && !ok; attempt++)
         {
             if (attempt > 0) std::this_thread::sleep_for(std::chrono::milliseconds(100));
-            ok = readRegisters(0x00, version, 2) && readRegisters(0x02, &resetCause, 1) && readState(a) &&
-                 readState(b) && a.sameCounters(b);
+            ok = readRegisters(0x00, version, 2) && readState(a) && readState(b) && a.sameCounters(b);
         }
         if (!ok)
         {
@@ -280,8 +278,7 @@ public:
             throw std::runtime_error("rackui: no answer on " + config.i2cDevice + " after 3 seconds (check wiring and address)");
         }
         decoder_.reset(b);
-        FDVE_INFO("rackui: firmware %d.%d, last module reset: %s", version[0], version[1],
-                  resetCauseText(resetCause).c_str());
+        FDVE_INFO("rackui: firmware %d.%d", version[0], version[1]);
 
         // TX_EN and RX_EN lamps, on GPIO lines.
         try
@@ -403,7 +400,7 @@ private:
 
     // Once a second, make sure the module is still set up the way this driver
     // left it. A write can be corrupted on the bus like a read can, and the
-    // module can restart (its watchdog, a power dip). Two things matter:
+    // module can lose power. Two things matter:
     //   - the config register must be 0: its "clear on read" bits would make
     //     the counters jump and look like knob movement
     //   - the LED animation must be the one selected here
@@ -427,26 +424,21 @@ private:
         }
         if (animation_ >= 0 && animation != animation_)
         {
-            // The module is not in the LED mode it was told. Either the write
-            // was lost, or the module restarted and is back at its defaults.
-            uint8_t resetCause = 0;
-            readRegisters(0x02, &resetCause, 1);
-            FDVE_DEBUG("rackui: LED animation was 0x%02x, expected 0x%02x (last module reset: %s)", animation,
-                       animation_, resetCauseText(resetCause).c_str());
+            // The module is not in the LED mode it was told: the write was
+            // lost, or the module is back at its defaults.
+            FDVE_DEBUG("rackui: LED animation was 0x%02x, expected 0x%02x", animation, animation_);
 
-            // If that keeps happening while this driver writes LED levels, the
-            // writes are the likely cause: stop them and let the module run
-            // its own animation.
+            // If that keeps happening while this driver writes LED levels,
+            // stop writing them and let the module run its own animation.
             if (animation_ == kAnimationIdle && !ledWritesSuspended_)
             {
                 if (now - firstMismatch_ > std::chrono::seconds(60)) { firstMismatch_ = now; mismatches_ = 0; }
                 if (++mismatches_ >= 3)
                 {
                     ledWritesSuspended_ = true;
-                    FDVE_WARN("rackui: the module left LED level mode %d times in a minute (last module reset: %s). "
-                              "LED level display is off until restart; the LEDs follow the knob. "
-                              "A slower I2C bus (100 kHz) may help.",
-                              mismatches_, resetCauseText(resetCause).c_str());
+                    FDVE_WARN("rackui: the module left LED level mode %d times in a minute. "
+                              "LED level display is off until restart; the LEDs follow the knob.",
+                              mismatches_);
                     animation_ = -1;
                     setAnimation(kAnimationFollowing);
                     return;
@@ -456,15 +448,6 @@ private:
             animation_ = -1;
             setAnimation(wanted);
         }
-    }
-
-    static std::string resetCauseText(uint8_t flags)
-    {
-        std::string text;
-        const char* const names[] = {"power-on", "reset pin", "software", "watchdog", "window watchdog", "option bytes"};
-        for (int bit = 0; bit < 6; bit++)
-            if (flags & (1 << bit)) text += (text.empty() ? "" : "+") + std::string(names[bit]);
-        return text.empty() ? "unknown" : text;
     }
 
     // Reads registers. Tries one transaction with a repeated start first
