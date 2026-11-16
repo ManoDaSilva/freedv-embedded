@@ -61,6 +61,13 @@ void Menu::showMessage(const std::string& title, const std::string& text)
     mode_ = Mode::Message;
 }
 
+bool Menu::dismissMessage()
+{
+    if (!active_ || mode_ != Mode::Message) return false;
+    mode_ = Mode::Browse;
+    return true;
+}
+
 MenuItem* Menu::selectedItem() const
 {
     const int index = levels_.back().selected;

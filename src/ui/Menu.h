@@ -75,6 +75,9 @@ public:
 
     // A message that covers the menu until the next press.
     void showMessage(const std::string& title, const std::string& text);
+    // Takes a message away without a press, when its reason has gone.
+    // Returns false if no message was showing.
+    bool dismissMessage();
 
 private:
     enum class Mode { Browse, EditChoice, EditNumber, EditText, Message };

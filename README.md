@@ -784,7 +784,7 @@ happens when the radio's USB cable is unplugged, which takes its sound card
 and its control connection along. The program carries on with silence in that
 direction, shows "Audio error" on the display, and tries the device again
 every 2 seconds. When the cable is back, audio and radio control resume by
-themselves.
+themselves and the message goes away.
 
 ### System and shut down
 

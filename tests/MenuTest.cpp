@@ -397,6 +397,18 @@ static void testEngine()
     menu.handle(longPress());
     CHECK(!menu.active());
 
+    // A message can be taken away without a press, and only a message.
+    CHECK(!menu.dismissMessage());
+    menu.open();
+    CHECK(!menu.dismissMessage());
+    menu.showMessage("Audio error", "Radio in is gone.");
+    CHECK(menu.editing() && menu.dismissMessage());
+    CHECK(!menu.editing() && menu.active() && menu.selectedLabel() == "Sub");
+    menu.close();
+    menu.showMessage("Audio error", "Radio in is gone."); // also opens a closed menu
+    CHECK(menu.active() && menu.dismissMessage());
+    menu.close();
+
     // Closing from deep inside still runs onLeave.
     menu.open();
     menu.handle(click());

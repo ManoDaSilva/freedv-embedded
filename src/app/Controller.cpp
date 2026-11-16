@@ -58,12 +58,22 @@ public:
         status_ = status;
     }
 
-    // Shows a message on the display until the knob is pressed.
+    // Shows a message on the display until the knob is pressed, or until
+    // clearNotice() says its reason has gone.
     void notify(const std::string& title, const std::string& text)
     {
         std::lock_guard<std::mutex> lock(mutex_);
         noticeTitle_ = title;
         noticeText_ = text;
+        noticeCleared_ = false;
+    }
+
+    // The problem a notice reported is over: take the message off the display.
+    void clearNotice()
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        noticeTitle_.clear();
+        noticeCleared_ = true;
     }
 
     // Short presses on the status screen since the last call.
@@ -110,10 +120,24 @@ private:
                 std::lock_guard<std::mutex> lock(mutex_);
                 if (!noticeTitle_.empty())
                 {
+                    // Remember whether the notice opened the menu, so that
+                    // taking it away again leaves things as they were.
+                    noticeOpenedMenu_ = !menu.active();
                     menu.showMessage(noticeTitle_, noticeText_);
                     noticeTitle_.clear();
+                    noticeShowing_ = true;
                     lastInput = now;
                     redraw = true;
+                }
+                else if (noticeCleared_)
+                {
+                    noticeCleared_ = false;
+                    if (noticeShowing_ && menu.dismissMessage())
+                    {
+                        if (noticeOpenedMenu_) menu.close();
+                        redraw = true;
+                    }
+                    noticeShowing_ = false;
                 }
             }
             if (events.any())
@@ -126,6 +150,7 @@ private:
                 {
                     redraw = menu.handle(events);
                     lastInput = now;
+                    noticeShowing_ = false; // the operator took over
                 }
                 else if (now - lastInput > std::chrono::seconds(timeoutS_))
                 {
@@ -214,6 +239,9 @@ private:
     ModemStatus status_;
     std::string noticeTitle_;
     std::string noticeText_;
+    bool noticeCleared_ = false;     // set by clearNotice(), under the mutex
+    bool noticeShowing_ = false;     // user interface thread only
+    bool noticeOpenedMenu_ = false;  // user interface thread only
     bool failing_ = false;
     int volumePercent_ = 0;
     Clock::time_point volumeShownUntil_{};
@@ -263,6 +291,7 @@ RunResult runController(const Config& config, const std::string& configPath, con
     // does not open is treated the same way, so another one can be picked in
     // the menu. Without a menu, failing at once is more useful.
     std::string audioProblems;
+    std::atomic<int> devicesMissing{0};
     auto openStream = [&](const SoundCardConfig& card, const std::string& device, StreamDirection direction,
                           const char* name) -> std::unique_ptr<IAudioStream> {
         const AudioStreamConfig streamSettings = streamConfig(card, device, config.periodMs);
@@ -277,12 +306,21 @@ RunResult runController(const Config& config, const std::string& configPath, con
             if (config.menu.type == "none") throw;
             FDVE_ERROR("%s: %s. Running without it; it is tried again every 2 seconds.", name, e.what());
             audioProblems += std::string(audioProblems.empty() ? "" : ", ") + name;
+            devicesMissing.fetch_add(1);
         }
         const std::string label = name;
         return std::make_unique<ReconnectingStream>(
             label, card.sampleRate, opener, std::move(stream),
-            [&ui, label](bool lost, const std::string&) {
-                if (lost) ui.notify("Audio error", label + " is gone. It is tried again every 2 seconds.");
+            [&ui, &devicesMissing, label](bool lost, const std::string&) {
+                if (lost)
+                {
+                    devicesMissing.fetch_add(1);
+                    ui.notify("Audio error", label + " is gone. It is tried again every 2 seconds.");
+                }
+                else if (devicesMissing.fetch_sub(1) == 1)
+                {
+                    ui.clearNotice(); // the last missing device is back
+                }
             });
     };
     auto radioIn = openStream(config.radio, config.radio.captureDevice, StreamDirection::Capture, "Radio in");
