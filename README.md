@@ -807,21 +807,31 @@ runs the shutdown command. Wait until the Pi's green light stops blinking
 before removing power.
 
 The default command is `systemctl poweroff`, then `sudo -n systemctl poweroff`
-if that is refused. Which one works depends on how the program is started:
+if that is refused. Unless the program runs as root, both need a permission
+that a normal user does not have, even on Raspberry Pi OS. Without it the log
+shows "Interactive authentication required" and "a password is required".
 
-| Started | Works by default |
-|---|---|
-| As root, or as a systemd service running as root | Yes |
-| From a terminal on Raspberry Pi OS as the first user | Yes, that user has passwordless `sudo` |
-| As a systemd service under another user (`User=freedv` in the example unit) | No. Allow it with the rule below. |
+Give the user that runs the program the right to this one command. Create the
+rule with `visudo`, which checks it before saving:
 
-To let a service user power the Pi off, create
-`/etc/sudoers.d/freedv-poweroff` with `sudo visudo -f /etc/sudoers.d/freedv-poweroff`
-and this line (replace `freedv` with the user name):
+```bash
+sudo visudo -f /etc/sudoers.d/freedv-poweroff
+```
+
+Put in this line, with your user name instead of `pi`:
 
 ```
-freedv ALL=(root) NOPASSWD: /usr/bin/systemctl poweroff
+pi ALL=(root) NOPASSWD: /usr/bin/systemctl poweroff
 ```
+
+Check it without shutting anything down:
+
+```bash
+sudo -n -l /usr/bin/systemctl poweroff
+```
+
+It prints the command path when the rule works. The rule allows this one
+command only. The file name must not contain a dot, or `sudo` ignores it.
 
 `menu.shutdown_command` replaces the command, for example to run a script.
 If the command fails, the program exits with an error and the Pi stays on.
