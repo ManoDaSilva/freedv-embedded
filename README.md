@@ -11,6 +11,14 @@ headset and adds RADE V1 to a radio that does not have it.
   The status screen on a two-colour SSD1306, receiving (left) and transmitting (right).
 </p>
 
+<p align="center">
+  <img src="docs/3d-case.jpg" alt="Implementation in a 3D-printed case, with a RackUI module" width="640">
+</p>
+
+<p align="center">
+  Implementation in a 3D-printed case, with a <a href="https://github.com/Jankyneering/rack-ui">RackUI module.</a>
+</p>
+
 ## Contents
 
 - [What it does](#what-it-does)
