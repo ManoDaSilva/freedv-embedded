@@ -406,6 +406,7 @@ PTT output (`ptt.output.type`):
 |---|---|
 | `none` | The radio keys itself from the audio (sound card VOX) |
 | `gpio` | A GPIO line keys the radio |
+| `reporter_link` | The network part of reporting links the way the program links it. Builds only, does not connect. |
 | `reporting` | What is reported and when: start, frequency changes and their rate, transmit, sync, decoded callsigns, radio offline, analog mode |
 | `rig` | The radio is keyed over its control connection, see [radio control](#radio-control-cat) |
 

@@ -51,6 +51,10 @@ endif()
 add_library(fdve_reporting STATIC reporting/ReportPolicy.cpp reporting/Reporter.cpp reporting/BackendSink.cpp)
 target_include_directories(fdve_reporting PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(fdve_reporting PUBLIC fdve_log Threads::Threads PRIVATE fdv_reporting fdv_util fdv_os_wrapper)
+# The backend's reporting library uses its utility and OS libraries but does
+# not say so. With static libraries the linker then needs them after it,
+# which only happens if the dependency is declared. Declare it here.
+target_link_libraries(fdv_reporting INTERFACE fdv_util fdv_os_wrapper)
 target_compile_definitions(fdve_reporting PRIVATE ULOG_HAVE_TIME ULOG_NO_COLOR ULOG_ASYNC)
 
 # --- display ------------------------------------------------------------------

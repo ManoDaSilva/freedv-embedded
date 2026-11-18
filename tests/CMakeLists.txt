@@ -22,6 +22,11 @@ add_executable(ReportingTest ReportingTest.cpp)
 target_link_libraries(ReportingTest PRIVATE fdve_reporting_logic)
 add_test(NAME reporting COMMAND ReportingTest)
 
+# fdv_util first, as in the program, where the modem library brings it in.
+add_executable(ReporterLinkTest ReporterLinkTest.cpp)
+target_link_libraries(ReporterLinkTest PRIVATE fdv_util fdve_reporting)
+add_test(NAME reporter_link COMMAND ReporterLinkTest)
+
 add_executable(AnalogPathTest AnalogPathTest.cpp)
 target_link_libraries(AnalogPathTest PRIVATE fdve_audio)
 add_test(NAME analog_path COMMAND AnalogPathTest)
