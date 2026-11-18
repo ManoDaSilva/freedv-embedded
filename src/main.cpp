@@ -11,6 +11,7 @@
 
 #include "app/Config.h"
 #include "app/Controller.h"
+#include "app/Version.h"
 #include "util/Log.h"
 
 namespace {
@@ -44,7 +45,11 @@ int main(int argc, char** argv)
         std::string arg = argv[i];
         if ((arg == "-c" || arg == "--config") && i + 1 < argc) configPath = argv[++i];
         else if (arg == "--check-config") checkOnly = true;
-        else if (arg == "--version") { std::printf("freedv-embedded %s, by Manoel - ON6RF\n", FDVE_VERSION); return 0; }
+        else if (arg == "--version")
+        {
+            std::printf("%s %s, by %s\n", fdve::kSoftwareName, fdve::kSoftwareVersion, fdve::kSoftwareAuthor);
+            return 0;
+        }
         else { usage(argv[0]); return arg == "-h" || arg == "--help" ? 0 : 2; }
     }
 
@@ -58,7 +63,7 @@ int main(int argc, char** argv)
             return 0;
         }
 
-        FDVE_INFO("freedv-embedded %s, by Manoel - ON6RF", FDVE_VERSION);
+        FDVE_INFO("%s %s, by %s", fdve::kSoftwareName, fdve::kSoftwareVersion, fdve::kSoftwareAuthor);
 
         std::signal(SIGINT, onSignal);
         std::signal(SIGTERM, onSignal);

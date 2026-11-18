@@ -28,6 +28,19 @@ struct SoundCardConfig
     std::string captureMixer;
 };
 
+struct ReportingConfig
+{
+    bool enabled = false;
+    std::string gridSquare;
+    std::string message;
+    bool frequencyFromRig = true; // false: frequencyHz is a fixed value
+    long long frequencyHz = 0;
+    bool pskReporter = false;
+};
+
+// "JO20" or "JO20sv", in either case.
+bool isGridSquare(const std::string& text);
+
 struct Config
 {
     LogLevel logLevel = LogLevel::Info;
@@ -51,6 +64,7 @@ struct Config
 
     DisplayConfig display;
     MenuInputConfig menu;
+    ReportingConfig reporting;
 };
 
 // Both throw std::runtime_error with a readable message on any problem,

@@ -147,6 +147,27 @@ int main()
     CHECK(rejects(q("[rig]\nptt = \"vox\"\n").c_str(), "rig.ptt"));
     CHECK(rejects(q("[ptt.output]\ntype = \"rig\"\n").c_str(), "no radio is set up in [rig]"));
 
+    // FreeDV Reporter.
+    CHECK(!example.reporting.enabled && example.reporting.frequencyFromRig && !example.reporting.pskReporter);
+    const char* withCall = "[ptt.input]\ntype = \"none\"\n[modem]\ncallsign = \"ON6RF\"\n";
+    auto rq = [&](const char* extra) { return std::string(withCall) + extra; };
+    auto rp = fdve::parseConfig(rq("[reporting]\nenabled = true\ngrid_square = \"JO20sv\"\nfrequency = 14236000\n"
+                                   "message = \"Pi 4 + IC-705\"\npsk_reporter = true\n"));
+    CHECK(rp.reporting.enabled && rp.reporting.gridSquare == "JO20sv" && !rp.reporting.frequencyFromRig);
+    CHECK(rp.reporting.frequencyHz == 14236000 && rp.reporting.message == "Pi 4 + IC-705" && rp.reporting.pskReporter);
+    auto rr = fdve::parseConfig(rq("[rig]\ntype = \"hamlib\"\nmodel = 3085\n"
+                                   "[reporting]\nenabled = true\ngrid_square = \"JO20\"\nfrequency = \"rig\"\n"));
+    CHECK(rr.reporting.frequencyFromRig);
+    CHECK(rejects(rq("[reporting]\nenabled = true\nfrequency = 14236000\n").c_str(), "'reporting.grid_square' is empty"));
+    CHECK(rejects(q("[reporting]\nenabled = true\ngrid_square = \"JO20\"\nfrequency = 14236000\n").c_str(),
+                  "'modem.callsign' is empty"));
+    CHECK(rejects(rq("[reporting]\nenabled = true\ngrid_square = \"JO20\"\n").c_str(), "no radio is set up"));
+    CHECK(rejects(rq("[reporting]\ngrid_square = \"Brussels\"\n").c_str(), "Maidenhead"));
+    CHECK(rejects(rq("[reporting]\nfrequency = \"vfo\"\n").c_str(), "reporting.frequency"));
+    CHECK(rejects(rq("[reporting]\nfrequency = 14\n").c_str(), "frequency in Hz"));
+    CHECK(fdve::isGridSquare("JO20") && fdve::isGridSquare("jo20SV") && !fdve::isGridSquare("JO2") &&
+          !fdve::isGridSquare("ZZ20") && !fdve::isGridSquare("JO20ZZ"));
+
     // Mistakes are errors, not silent defaults.
     CHECK(rejects("[modem]\nmod = \"RADEV1\"\n", "unknown key 'modem.mod'"));
     CHECK(rejects("[modme]\n", "unknown section 'modme'"));

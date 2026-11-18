@@ -22,6 +22,7 @@ struct ModemStatus
     bool rigConfigured = false; // a radio control connection is set up
     bool rigConnected = false;  // ... and the radio answers
     long long rigFrequencyHz = 0; // from the radio, 0 while unknown
+    std::string reporterStatus;   // empty when reporting is off, else "connecting", "connected", ...
 };
 
 inline const char* toString(ModemState s)

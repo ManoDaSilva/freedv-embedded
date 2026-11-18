@@ -438,7 +438,7 @@ static void testSettings()
     CHECK(readFile(path) == text);
 
     // Every section of the file has a submenu, plus volume.
-    for (const char* label : {"Volume", "Modem", "Mode switch", "Audio", "Rig", "PTT", "Display", "Controls", "Log",
+    for (const char* label : {"Volume", "Modem", "Mode switch", "Audio", "Rig", "PTT", "Reporting", "Display", "Controls", "Log",
                               "Save & restart", "Discard changes", "System", "Shut down"})
         CHECK(select(menu, label));
 
@@ -480,6 +480,16 @@ static void testSettings()
     CHECK(rigRow());
     settings.setRigStatus(false, false, 0);
     CHECK(!rigRow());
+
+    // With reporting on, a Reporter row shows the connection state.
+    settings.setReporterStatus("connected");
+    menu.handle(click());
+    CHECK(select(menu, "Reporter"));
+    menu.handle(longPress());
+    settings.setReporterStatus("");
+    menu.handle(click());
+    CHECK(!select(menu, "Reporter"));
+    menu.handle(longPress());
 
     // Nothing up: one row says so.
     network.clear();
@@ -714,6 +724,62 @@ static void testSettings()
     CHECK(withRig.rig.type == "hamlib" && withRig.rig.model == 3073);
     CHECK(withRig.rig.device == "/dev/serial/by-id/usb-Silicon_Labs_CP2102_IC-7300-if00-port0");
     CHECK(withRig.pttOutput.type == "rig");
+
+    // Reporting: enable it from the menu with a grid square and a fixed
+    // frequency, then save. The callsign comes from the Modem menu.
+    SettingsMenu sixth(loadConfig(path), path, fake);
+    Menu& menu6 = sixth.menu();
+    menu6.open();
+    CHECK(select(menu6, "Reporting"));
+    menu6.handle(click());
+    CHECK(select(menu6, "Enabled"));
+    menu6.handle(click());
+    menu6.handle(turn(1)); // on
+    menu6.handle(click());
+    auto typeText = [&](const std::string& textNow, const std::string& wanted) {
+        menu6.handle(click()); // start editing
+        for (size_t i = 0; i < wanted.size(); i++)
+        {
+            const char from = i < textNow.size() ? textNow[i] : ' ';
+            menu6.handle(turn(static_cast<int>(digits.find(wanted[i])) - static_cast<int>(digits.find(from))));
+            menu6.handle(click());
+        }
+        if (wanted.size() < 6)
+        {
+            // Make the next position blank, then press on it: that ends the entry.
+            const char from = wanted.size() < textNow.size() ? textNow[wanted.size()] : ' ';
+            menu6.handle(turn(-static_cast<int>(digits.find(from))));
+            menu6.handle(click());
+        }
+    };
+    CHECK(select(menu6, "Grid square"));
+    typeText(loadConfig(path).reporting.gridSquare == "JO20eu" ? "JO20EU" : "", "JO20");
+    CHECK(select(menu6, "Fixed kHz"));
+    menu6.handle(click());
+    menu6.handle(longPress()); // cancel: nothing typed
+    menu6.handle(longPress()); // leave Reporting
+    // Saving with the frequency still "from rig" but no rig in this file: refused.
+    Config check = loadConfig(path);
+    const bool rigInFile = check.rig.type != "none";
+    CHECK(select(menu6, "Save & restart"));
+    menu6.handle(click());
+    if (!rigInFile) CHECK(!sixth.restartRequested());
+    menu6.handle(click()); // dismiss the message: "Not saved" without a rig, "Saved" with one
+    // With a fixed frequency it is accepted.
+    CHECK(select(menu6, "Reporting"));
+    menu6.handle(click());
+    CHECK(select(menu6, "Frequency"));
+    menu6.handle(click());
+    menu6.handle(turn(1)); // fixed
+    menu6.handle(click());
+    snapshot(menu6, "menu_14_reporting");
+    menu6.handle(longPress());
+    CHECK(select(menu6, "Save & restart"));
+    menu6.handle(click());
+    CHECK(sixth.restartRequested());
+    Config withReporting = loadConfig(path);
+    CHECK(withReporting.reporting.enabled && withReporting.reporting.gridSquare == "JO20");
+    CHECK(!withReporting.reporting.frequencyFromRig && withReporting.reporting.frequencyHz == 14236000);
 
     std::remove(path.c_str());
 }

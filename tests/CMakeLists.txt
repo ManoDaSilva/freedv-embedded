@@ -12,6 +12,16 @@ add_executable(ReconnectTest ReconnectTest.cpp)
 target_link_libraries(ReconnectTest PRIVATE fdve_audio Threads::Threads)
 add_test(NAME audio_reconnect COMMAND ReconnectTest)
 
+# Only the reporting decisions and the thread: the network part needs the
+# real services and is left out of the tests.
+add_library(fdve_reporting_logic STATIC ${CMAKE_SOURCE_DIR}/src/reporting/ReportPolicy.cpp
+    ${CMAKE_SOURCE_DIR}/src/reporting/Reporter.cpp ReportingTestSink.cpp)
+target_include_directories(fdve_reporting_logic PUBLIC ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(fdve_reporting_logic PUBLIC fdve_log Threads::Threads)
+add_executable(ReportingTest ReportingTest.cpp)
+target_link_libraries(ReportingTest PRIVATE fdve_reporting_logic)
+add_test(NAME reporting COMMAND ReportingTest)
+
 add_executable(AnalogPathTest AnalogPathTest.cpp)
 target_link_libraries(AnalogPathTest PRIVATE fdve_audio)
 add_test(NAME analog_path COMMAND AnalogPathTest)

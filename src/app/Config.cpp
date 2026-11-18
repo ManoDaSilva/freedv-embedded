@@ -118,6 +118,18 @@ void readGpio(const toml::table& t, const std::string& path, GpioLine::Config& o
 
 } // namespace
 
+bool isGridSquare(const std::string& text)
+{
+    if (text.size() != 4 && text.size() != 6) return false;
+    auto letter = [](char c, char last) {
+        c = static_cast<char>(c >= 'a' && c <= 'z' ? c - 32 : c);
+        return c >= 'A' && c <= last;
+    };
+    auto digit = [](char c) { return c >= '0' && c <= '9'; };
+    if (!letter(text[0], 'R') || !letter(text[1], 'R') || !digit(text[2]) || !digit(text[3])) return false;
+    return text.size() == 4 || (letter(text[4], 'X') && letter(text[5], 'X'));
+}
+
 Config parseConfig(std::string_view text)
 {
     toml::table root;
@@ -136,7 +148,8 @@ Config parseConfig(std::string_view text)
     for (auto&& [key, value] : root)
     {
         auto k = key.str();
-        if (k != "log" && k != "modem" && k != "mode_switch" && k != "audio" && k != "ptt" && k != "display" && k != "menu" && k != "rig")
+        if (k != "log" && k != "modem" && k != "mode_switch" && k != "audio" && k != "ptt" && k != "display" && k != "menu" && k != "rig" &&
+            k != "reporting")
             fail("unknown section '" + std::string(k) + "'");
     }
 
@@ -253,6 +266,42 @@ Config parseConfig(std::string_view text)
     read(menu, "menu", "reverse", config.menu.reverse);
     readInt(menu, "menu", "long_press_ms", config.menu.longPressMs, 200, 5000);
     readInt(menu, "menu", "timeout_s", config.menu.timeoutS, 5, 3600);
+
+    auto rep = section(root, "", "reporting", {"enabled", "grid_square", "message", "frequency", "psk_reporter"});
+    read(rep, "reporting", "enabled", config.reporting.enabled);
+    read(rep, "reporting", "grid_square", config.reporting.gridSquare);
+    read(rep, "reporting", "message", config.reporting.message);
+    read(rep, "reporting", "psk_reporter", config.reporting.pskReporter);
+    if (auto node = rep.get("frequency"))
+    {
+        if (auto word = node->value_exact<std::string>())
+        {
+            if (*word != "rig") fail("'reporting.frequency' must be \"rig\" or a frequency in Hz");
+            config.reporting.frequencyFromRig = true;
+        }
+        else if (auto hz = node->value_exact<int64_t>())
+        {
+            if (*hz < 100000 || *hz > 10000000000LL)
+                fail("'reporting.frequency' must be \"rig\" or a frequency in Hz, for example 14236000");
+            config.reporting.frequencyFromRig = false;
+            config.reporting.frequencyHz = *hz;
+        }
+        else
+        {
+            fail("'reporting.frequency' must be \"rig\" or a frequency in Hz");
+        }
+    }
+    if (!config.reporting.gridSquare.empty() && !isGridSquare(config.reporting.gridSquare))
+        fail("'reporting.grid_square' must be a Maidenhead locator such as \"JO20\" or \"JO20sv\"");
+    if (config.reporting.message.size() > 80) fail("'reporting.message' is limited to 80 characters");
+    if (config.reporting.enabled)
+    {
+        if (config.callsign.empty()) fail("reporting is enabled, but 'modem.callsign' is empty");
+        if (config.reporting.gridSquare.empty()) fail("reporting is enabled, but 'reporting.grid_square' is empty");
+        if (config.reporting.frequencyFromRig && config.rig.type == "none")
+            fail("'reporting.frequency' is \"rig\", but no radio is set up in [rig]. "
+                 "Set up [rig], or give the frequency in Hz");
+    }
 
     return config;
 }

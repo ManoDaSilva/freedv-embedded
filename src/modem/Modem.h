@@ -51,6 +51,7 @@ public:
     bool sync() const;
     int snrDb() const;
     std::string lastRxCallsign() const;
+    unsigned rxCallsignCount() const; // goes up by one with every decoded callsign
 
 private:
     struct Impl;

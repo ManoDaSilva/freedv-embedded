@@ -47,6 +47,12 @@ if(FDVE_HAVE_HAMLIB)
     target_link_libraries(fdve_rig PRIVATE PkgConfig::HAMLIB)
 endif()
 
+# --- reporting: FreeDV Reporter and PSK Reporter ------------------------------------
+add_library(fdve_reporting STATIC reporting/ReportPolicy.cpp reporting/Reporter.cpp reporting/BackendSink.cpp)
+target_include_directories(fdve_reporting PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(fdve_reporting PUBLIC fdve_log Threads::Threads PRIVATE fdv_reporting fdv_util fdv_os_wrapper)
+target_compile_definitions(fdve_reporting PRIVATE ULOG_HAVE_TIME ULOG_NO_COLOR ULOG_ASYNC)
+
 # --- display ------------------------------------------------------------------
 add_library(fdve_display STATIC
     display/ConsoleDisplay.cpp
@@ -73,11 +79,11 @@ target_link_libraries(fdve_config PUBLIC fdve_log PRIVATE tomlplusplus::tomlplus
 
 # --- app: PTT state machine, wiring ---------------------------------------------
 add_library(fdve_app STATIC app/Controller.cpp)
-target_link_libraries(fdve_app PUBLIC fdve_config fdve_modem fdve_audio fdve_ptt fdve_display fdve_ui)
+target_link_libraries(fdve_app PUBLIC fdve_config fdve_modem fdve_audio fdve_ptt fdve_display fdve_ui fdve_reporting)
+target_compile_definitions(fdve_app PUBLIC FDVE_VERSION="${PROJECT_VERSION}")
 
 add_executable(freedv-embedded main.cpp)
 target_link_libraries(freedv-embedded PRIVATE fdve_app Threads::Threads)
-target_compile_definitions(freedv-embedded PRIVATE FDVE_VERSION="${PROJECT_VERSION}")
 set_target_properties(freedv-embedded PROPERTIES
     BUILD_RPATH "${FDVE_RADE_LIB_DIR}"
     INSTALL_RPATH "$ORIGIN/../${CMAKE_INSTALL_LIBDIR}/freedv-embedded")

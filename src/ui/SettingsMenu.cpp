@@ -480,6 +480,78 @@ MenuItem SettingsMenu::build()
         }));
     }
 
+    // [reporting]. The callsign is the one under Modem. The message is free
+    // text, which is impractical with a knob: it is set in the file.
+    {
+        MenuItem grid;
+        grid.kind = MenuItem::Kind::Text;
+        grid.label = "Grid square";
+        grid.maxLength = 6;
+        // The knob's character set is upper case, so the locator is shown and
+        // edited that way ("JO20EU" for "JO20eu"). Both are valid locators.
+        auto upper = [](std::string text) {
+            for (char& ch : text) if (ch >= 'a' && ch <= 'z') ch = static_cast<char>(ch - 32);
+            return text;
+        };
+        grid.get = [&c, upper] { return upper(c.reporting.gridSquare); };
+        grid.set = [this, &c, upper](const std::string& value) {
+            if (value == upper(c.reporting.gridSquare)) return;
+            if (!value.empty() && !isGridSquare(value))
+            {
+                menu_.showMessage("Grid square", "Four or six characters, such as JO20 or JO20SV.");
+                return;
+            }
+            c.reporting.gridSquare = value;
+            set("reporting", "grid_square", tomlString(value));
+        };
+
+        MenuItem source;
+        source.kind = MenuItem::Kind::Choice;
+        source.label = "Frequency";
+        source.choices = {"rig", "fixed"};
+        source.choiceLabels = {"from rig", "fixed"};
+        source.get = [&c] { return std::string(c.reporting.frequencyFromRig ? "rig" : "fixed"); };
+        source.set = [this, &c](const std::string& value) {
+            const bool fromRig = value == "rig";
+            if (fromRig == c.reporting.frequencyFromRig) return;
+            c.reporting.frequencyFromRig = fromRig;
+            if (fromRig) set("reporting", "frequency", tomlString("rig"));
+            else
+            {
+                // A starting point until a frequency is entered below.
+                if (c.reporting.frequencyHz <= 0) c.reporting.frequencyHz = 14236000;
+                set("reporting", "frequency", std::to_string(c.reporting.frequencyHz));
+            }
+        };
+
+        // Entered in kHz, digit by digit, like the rig model number.
+        MenuItem fixed;
+        fixed.kind = MenuItem::Kind::Text;
+        fixed.label = "Fixed kHz";
+        fixed.maxLength = 7;
+        fixed.get = [&c] { return c.reporting.frequencyHz > 0 ? std::to_string(c.reporting.frequencyHz / 1000) : std::string(); };
+        fixed.set = [this, &c](const std::string& value) {
+            if (value.empty() || value.find_first_not_of("0123456789") != std::string::npos)
+            {
+                menu_.showMessage("Fixed kHz", "Digits only: the frequency in kHz, such as 14236.");
+                return;
+            }
+            const long long hz = std::stoll(value) * 1000;
+            if (hz == c.reporting.frequencyHz && !c.reporting.frequencyFromRig) return;
+            c.reporting.frequencyHz = hz;
+            c.reporting.frequencyFromRig = false;
+            set("reporting", "frequency", std::to_string(hz));
+        };
+
+        root.push_back(submenu("Reporting", {
+            toggle("Enabled", "reporting", "enabled", c.reporting.enabled),
+            std::move(grid),
+            std::move(source),
+            std::move(fixed),
+            toggle("PSK Reporter", "reporting", "psk_reporter", c.reporting.pskReporter),
+        }));
+    }
+
     // [display]. The display type and its I2C address are left out on
     // purpose: a wrong value there would switch off this very menu.
     {
@@ -598,6 +670,9 @@ MenuItem SettingsMenu::build()
                     return text;
                 }));
             }
+            // FreeDV Reporter, when reporting is on.
+            if (!reporterStatus_.empty())
+                menu.children.push_back(info("Reporter", [this] { return reporterStatus_; }));
             menu.children.push_back(info("CPU", cpu));
             menu.children.push_back(info("RAM", [this] { return system_.memory(); }));
             menu.children.push_back(info("Temp", [this] { return system_.temperature(); }));

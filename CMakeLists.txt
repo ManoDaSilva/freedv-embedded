@@ -23,8 +23,9 @@ if(NOT EXISTS ${FDV_BACKEND_DIR}/CMakeLists.txt)
         "external/freedv-backend is empty. Run: git submodule update --init")
 endif()
 
-# Reporting (FreeDV Reporter, PSK Reporter) is not used, so TLS is not needed.
-set(DISABLE_TLS_SUPPORT ON CACHE BOOL "No TLS: reporting is not used" FORCE)
+# FreeDV Reporter connects over TLS. The backend uses the system's OpenSSL
+# (libssl-dev), or downloads and builds LibreSSL when it is missing.
+set(DISABLE_TLS_SUPPORT OFF CACHE BOOL "TLS for FreeDV Reporter" FORCE)
 add_subdirectory(${FDV_BACKEND_DIR} EXCLUDE_FROM_ALL)
 
 # librade is built by the backend as a shared library inside the build tree.

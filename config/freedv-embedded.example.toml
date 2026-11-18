@@ -73,6 +73,17 @@ type = "none"          # "none" or "hamlib"
 # A radio shared with other programs: run "rigctld" and connect to it with
 # model = 2 and device = "localhost:4532".
 
+# Spotting on FreeDV Reporter (qso.freedv.org): shows this station on the
+# map with its frequency, and the callsigns it receives. The callsign is the
+# one in [modem]. Changes take effect after a restart.
+[reporting]
+enabled = false
+grid_square = "JO20eu"   # Maidenhead locator, 4 or 6 characters. This one is Brussels: change it to yours
+message = ""             # free text shown next to your entry, up to 80 characters
+frequency = "rig"        # "rig": from [rig]; nothing is reported while the radio is offline
+                         # or a fixed frequency in Hz, such as 14236000
+psk_reporter = false     # also send received callsigns to pskreporter.info
+
 # PTT in: what tells the modem to transmit.
 [ptt.input]
 type = "gpio"          # "gpio", "console" or "none" (receive only)

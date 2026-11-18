@@ -52,6 +52,8 @@ public:
     SystemInfo& system() { return system_; }
 
     // What the radio's control connection reports, for the System menu.
+    void setReporterStatus(const std::string& status) { reporterStatus_ = status; }
+
     void setRigStatus(bool configured, bool connected, long long frequencyHz)
     {
         rigConfigured_ = configured;
@@ -100,6 +102,7 @@ private:
     bool rigConfigured_ = false;
     bool rigConnected_ = false;
     long long rigFrequencyHz_ = 0;
+    std::string reporterStatus_; // empty: reporting off
 
     AudioHardware hardware_;
     std::unique_ptr<Mixer> radioMixer_;

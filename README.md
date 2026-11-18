@@ -32,6 +32,7 @@ headset and adds RADE V1 to a radio that does not have it.
 - [Configure and run](#configure-and-run)
 - [PTT](#ptt)
 - [Radio control (CAT)](#radio-control-cat)
+- [FreeDV Reporter](#freedv-reporter)
 - [Analog mode](#analog-mode)
 - [Display](#display)
   - [Wiring](#wiring)
@@ -66,6 +67,7 @@ headset and adds RADE V1 to a radio that does not have it.
   callsign.
 - A settings menu on the display, operated with a rotary encoder: callsign,
   audio devices, volume and the other settings, saved back to the config file.
+- Spotting on FreeDV Reporter, and optionally PSK Reporter.
 - One TOML config file. Unknown keys and bad values are reported as errors.
 
 ## How it works
@@ -135,7 +137,7 @@ sudo apt update
 ```
 
 ```bash
-sudo apt install -y build-essential cmake git autoconf automake libtool wget patch libasound2-dev libsamplerate0-dev libebur128-dev libhamlib-dev libhamlib-utils i2c-tools
+sudo apt install -y build-essential cmake git autoconf automake libtool wget patch libasound2-dev libsamplerate0-dev libebur128-dev libhamlib-dev libhamlib-utils libssl-dev i2c-tools
 ```
 
 Download this project. `--recurse-submodules` matters: it also fetches the
@@ -322,7 +324,7 @@ The build needs network access. Opus, RNNoise and rade_c are downloaded the
 first time, which takes a while.
 
 ```bash
-sudo apt install build-essential cmake git autoconf automake libtool wget patch libasound2-dev libsamplerate0-dev libebur128-dev libhamlib-dev libhamlib-utils
+sudo apt install build-essential cmake git autoconf automake libtool wget patch libasound2-dev libsamplerate0-dev libebur128-dev libhamlib-dev libhamlib-utils libssl-dev
 ```
 
 ```bash
@@ -352,6 +354,7 @@ in that file.
 | `[mode_switch]` | The digital/analog switch |
 | `[audio]`, `[audio.radio]`, `[audio.headset]` | Sound devices, sample rates, buffering |
 | `[rig]` | The radio's control connection (CAT) |
+| `[reporting]` | FreeDV Reporter and PSK Reporter |
 | `[ptt.input]`, `[ptt.output]` | PTT button, radio keying, TX timing |
 | `[display]` | Console status line, SSD1306 |
 | `[menu]` | The knob that operates the settings menu |
@@ -403,6 +406,7 @@ PTT output (`ptt.output.type`):
 |---|---|
 | `none` | The radio keys itself from the audio (sound card VOX) |
 | `gpio` | A GPIO line keys the radio |
+| `reporting` | What is reported and when: start, frequency changes and their rate, transmit, sync, decoded callsigns, radio offline, analog mode |
 | `rig` | The radio is keyed over its control connection, see [radio control](#radio-control-cat) |
 
 ## Radio control (CAT)
@@ -410,7 +414,7 @@ PTT output (`ptt.output.type`):
 `[rig]` describes the radio's control connection. It goes through
 [Hamlib](https://hamlib.github.io/), so it works with the radios Hamlib
 supports. One connection serves several uses: keying the transmitter, and
-reading the radio's frequency, which FreeDV Reporter support will need later.
+reading the radio's frequency, which [FreeDV Reporter](#freedv-reporter) uses.
 
 Hamlib is an optional build dependency. Install it before running CMake:
 
@@ -484,6 +488,65 @@ list of the ports present), baud rate and PTT method. The System menu has a
 Keying with a hardware line of the serial port (RTS or DTR) is done here too:
 set `ptt = "rts"` or `ptt = "dtr"` in `[rig]`, together with
 `ptt.output.type = "rig"`. In the menu it is "PTT via" under "Rig".
+
+## FreeDV Reporter
+
+[FreeDV Reporter](https://qso.freedv.org) is a live map and list of FreeDV
+stations. With reporting on, this station appears there with its callsign,
+locator, frequency and software version, shows when it transmits, and lists
+the callsigns it receives with their SNR.
+
+```toml
+[modem]
+callsign = "ON6RF"
+
+[reporting]
+enabled = true
+grid_square = "JO20eu"
+message = "Pi 4 and IC-705"
+frequency = "rig"
+psk_reporter = false
+```
+
+| Key | Meaning |
+|---|---|
+| `enabled` | Reporting on or off. Off by default. |
+| `grid_square` | Your Maidenhead locator, 4 or 6 characters. Required when enabled. |
+| `message` | Free text shown next to your entry, up to 80 characters |
+| `frequency` | `"rig"`: the frequency read over CAT, see [radio control](#radio-control-cat). Or a fixed frequency in Hz, such as `14236000`, for a radio without CAT. |
+| `psk_reporter` | Also send received callsigns to [PSK Reporter](https://pskreporter.info) |
+
+The callsign is `modem.callsign`, the one the modem sends at the end of each
+over. Reporting needs a callsign and a locator; the config check refuses
+`enabled = true` without them.
+
+What is reported, and when:
+
+| Event | Report |
+|---|---|
+| Start | The station: callsign, locator, software name and version, receive only or not |
+| Frequency change | The new frequency, at most once a second |
+| Radio offline, with `frequency = "rig"` | No frequency, until the radio answers again |
+| PTT pressed and released | Transmitting, with the mode (`RADEV1`) |
+| Receiving a signal with sync | A receive report with the SNR, once a second |
+| Callsign decoded at the end of an over | That callsign and the SNR. With `psk_reporter = true` also to PSK Reporter, when the frequency is known. |
+| Analog mode | The station is hidden from the list while in analog mode |
+
+The software is advertised as the name and version printed at start-up, for
+example `freedv-embedded 0.1.0`. A station without a PTT input
+(`ptt.input.type = "none"`) is reported as receive only.
+
+The connection runs in the background over TLS, and reconnects by itself
+after a network outage. A slow or absent network does not affect audio or
+PTT. PSK Reporter receives the collected callsigns every five minutes.
+
+"Reporting" in the settings menu has the same settings, except the message,
+which is free text and set in the file. The System menu has a "Reporter" row:
+connecting, connected or offline.
+
+Building with reporting needs OpenSSL's development files (`libssl-dev`),
+which are in the install line under [build](#build). Without them the build
+downloads and builds LibreSSL instead, which takes longer.
 
 ## Analog mode
 
@@ -735,6 +798,7 @@ position, press on a blank to finish.
 | Mode switch | `[mode_switch]` | Type, GPIO line, polarity, bias, action, debounce |
 | Audio | `[audio]`, `[audio.radio]`, `[audio.headset]` | Sound device for each of the four directions, sample rates, period, prebuffer |
 | Rig | `[rig]` | Type, Hamlib model number, serial port, baud rate, PTT method |
+| Reporting | `[reporting]` | On or off, locator, frequency from the rig or fixed (in kHz), PSK Reporter |
 | PTT | `[ptt.input]`, `[ptt.output]` | Types, GPIO lines, polarity, bias, debounce, TX delay and tail |
 | Display | `[display]` | Refresh, contrast, rotation, console status line |
 | Controls | `[menu]` | Knob direction, LED mode and brightness, long press time, menu timeout |
@@ -796,6 +860,7 @@ plugging in a cable, leave "System" and enter it again.
 |---|---|
 | `eth0`, `wlan0`, ... | The IPv4 address of that network interface. There is one row per interface that is up and has an address, so wired and Wi-Fi both show when both are connected. With none connected, a single "Network: none" row. |
 | Rig | The radio's frequency, "connected" before the first reading, or "offline". Only with a `[rig]` set up. |
+| Reporter | The FreeDV Reporter connection: connecting, connected or offline. Only with reporting on. |
 | CPU | Load across all cores over the last second or so |
 | RAM | Memory in use and total, in MB |
 | Temp | CPU temperature |
@@ -939,6 +1004,10 @@ src/
   rig/IRig.h                 the radio's control connection: PTT, frequency
   rig/HamlibRig.*            Hamlib implementation, on its own thread
   rig/RigFactory.cpp         config -> rig
+  reporting/ReportPolicy.*   what to report, and when
+  reporting/Reporter.*       runs the reporting on its own thread
+  reporting/BackendSink.cpp  sends the reports through the backend's clients
+  app/Version.h              program name and version, as printed and reported
   display/IDisplay.h         update(ModemStatus)
   display/ConsoleDisplay.*   status line on stderr
   display/Framebuffer.*      128x64 one bit canvas, text, rectangles
@@ -963,7 +1032,6 @@ adding one class and one line in the factory:
 | Planned | Where |
 |---|---|
 | PTT in from a CMX108 or similar | new `IPttInput` in `src/ptt`, new `type` in `PttFactory.cpp` and `Config.cpp` |
-| FreeDV Reporter | uses `IRig::frequencyHz()` and the backend's reporting library |
 | Other displays | new `IDisplay` in `src/display`. `StatusScreen` can be reused for any 128x64 panel. |
 | I2S codec, other audio paths | new `IAudioStream` in `src/audio`, or just a different ALSA device name |
 
@@ -1043,6 +1111,7 @@ receiving and 30 % while transmitting.
 
 Not confirmed on hardware yet:
 
+- FreeDV Reporter and PSK Reporter
 - Keying the radio with the RTS or DTR line, and radios other than the IC-705
 - PTT out on a GPIO line
 - The mode switch and a rotary encoder on GPIO lines
@@ -1054,9 +1123,10 @@ without hardware.
 
 Next:
 
-1. FreeDV Reporter support, using the frequency from the radio.
+1. Try FreeDV Reporter on the air.
 2. The remaining GPIO functions.
-3. RADE V2, once the upstream backend supports it.
+3. Legacy modes (700D, 700E, 1600).
+4. RADE V2, once the upstream backend supports it.
 
 ## Acknowledgements
 
@@ -1067,7 +1137,7 @@ vocoder and the signal processing are theirs.
 |---|---|---|
 | [FreeDV](https://freedv.org) and the [Radio Autoencoder (RADE)](https://github.com/drowe67/radae) | David Rowe and the FreeDV team | BSD 2-Clause |
 | [rade_c](https://github.com/freedv/rade_c), RADE in C | Peter B Marks and the FreeDV team | BSD 2-Clause |
-| [freedv-backend](https://github.com/freedv/freedv-backend), the audio pipeline used here | Mooneer Salem | BSD 2-Clause |
+| [freedv-backend](https://github.com/freedv/freedv-backend), the audio pipeline and the FreeDV Reporter and PSK Reporter clients used here | Mooneer Salem | BSD 2-Clause |
 | [Opus](https://opus-codec.org), with the FARGAN vocoder and LPCNet | Jean-Marc Valin and the Xiph.Org Foundation | BSD 3-Clause |
 | [RNNoise](https://github.com/xiph/rnnoise) | Jean-Marc Valin and the Xiph.Org Foundation | BSD 3-Clause |
 | [Hamlib](https://hamlib.github.io/) | The Hamlib Group | LGPL 2.1 |

@@ -8,7 +8,9 @@
 #include "audio/AudioPump.h"
 #include "audio/ReconnectingStream.h"
 #include "display/StatusScreen.h"
+#include "app/Version.h"
 #include "modem/Modem.h"
+#include "reporting/Reporter.h"
 #include "ui/SettingsMenu.h"
 #include "util/Log.h"
 
@@ -206,6 +208,7 @@ private:
                 snapshot = status_;
             }
             settings_.setRigStatus(snapshot.rigConfigured, snapshot.rigConnected, snapshot.rigFrequencyHz);
+            settings_.setReporterStatus(snapshot.reporterStatus);
 
             // Lights around the knob: its position while the menu is open,
             // otherwise the same level as the bar on the status screen.
@@ -278,6 +281,22 @@ RunResult runController(const Config& config, const std::string& configPath, con
         rig = createRig(RigConfig{});
     }
     auto pttOut = createPttOutput(config.pttOutput, rig);
+
+    // Spotting on FreeDV Reporter. It connects in the background; nothing
+    // here waits for the network.
+    std::unique_ptr<Reporter> reporter;
+    if (config.reporting.enabled)
+    {
+        ReporterSettings settings;
+        settings.callsign = config.callsign;
+        settings.gridSquare = config.reporting.gridSquare;
+        settings.message = config.reporting.message;
+        settings.software = std::string(kSoftwareName) + " " + kSoftwareVersion;
+        settings.mode = config.mode;
+        settings.rxOnly = config.pttInput.type == "none";
+        settings.pskReporter = config.reporting.pskReporter;
+        reporter = std::make_unique<Reporter>(settings);
+    }
     auto modeSwitch = createModeSwitch(config.modeSwitch, config.startAnalog);
     UiThread ui(config, configPath);
     if (!rigProblem.empty()) ui.notify("Rig error", rigProblem);
@@ -466,6 +485,24 @@ RunResult runController(const Config& config, const std::string& configPath, con
         status.rigConfigured = config.rig.type != "none";
         status.rigConnected = rig->connected();
         status.rigFrequencyHz = rig->frequencyHz();
+
+        if (reporter)
+        {
+            ReportInput report;
+            report.transmitting = state != ModemState::Receive;
+            report.analog = isAnalog;
+            report.sync = status.sync;
+            report.snrDb = status.snrDb;
+            report.rxCallsign = status.rxCallsign;
+            report.rxCallsignCount = modem.rxCallsignCount();
+            // From the radio while it answers; with the radio offline, no frequency.
+            if (config.reporting.frequencyFromRig)
+                report.frequencyHz = rig->connected() ? static_cast<uint64_t>(std::max(0LL, rig->frequencyHz())) : 0;
+            else
+                report.frequencyHz = static_cast<uint64_t>(config.reporting.frequencyHz);
+            reporter->update(report);
+            status.reporterStatus = reporter->status();
+        }
         ui.publish(status);
 
         if (radioCapture.failed() || micCapture.failed() || radioPlayback.failed() || speakerPlayback.failed())

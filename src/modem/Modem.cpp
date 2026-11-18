@@ -70,6 +70,7 @@ struct Modem::Impl
 
     mutable std::mutex callsignMutex;
     std::string rxCallsign;
+    unsigned rxCallsignCount = 0;
 
     static void onTextRx(rade_text_t, const char* text, int length, void* state)
     {
@@ -77,6 +78,7 @@ struct Modem::Impl
         if (text == nullptr || length <= 0) return;
         std::lock_guard<std::mutex> lock(self->callsignMutex);
         self->rxCallsign.assign(text, length);
+        self->rxCallsignCount++;
     }
 };
 
@@ -244,6 +246,12 @@ std::string Modem::lastRxCallsign() const
 {
     std::lock_guard<std::mutex> lock(impl_->callsignMutex);
     return impl_->rxCallsign;
+}
+
+unsigned Modem::rxCallsignCount() const
+{
+    std::lock_guard<std::mutex> lock(impl_->callsignMutex);
+    return impl_->rxCallsignCount;
 }
 
 } // namespace fdve
